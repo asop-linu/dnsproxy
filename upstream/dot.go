@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/miekg/dns"
@@ -76,7 +76,7 @@ func newDoT(addr *url.URL, opts *Options) (ups Upstream, err error) {
 			// RFC 9461, some DoT providers (e.g., NextDNS on non-standard port
 			// 443) rely on ALPN to differentiate DoT from DoH traffic.  This
 			// was figured out in this issue:
-			// https://github.com/AdguardTeam/dnsproxy/issues/510
+			// https://github.com/asop-linu/dnsproxy/issues/510
 			NextProtos: []string{"dot"},
 		},
 		connsMu: &sync.Mutex{},
@@ -109,7 +109,7 @@ func (p *dnsOverTLS) Exchange(req *dns.Msg) (reply *dns.Msg, err error) {
 	reply, err = p.exchangeWithConn(conn, req)
 	if err != nil {
 		// The pooled connection might have been closed already, see
-		// https://github.com/AdguardTeam/dnsproxy/issues/3.  The following
+		// https://github.com/asop-linu/dnsproxy/issues/3.  The following
 		// connection from pool may also be malformed, so dial a new one.
 
 		err = errors.WithDeferred(err, conn.Close())

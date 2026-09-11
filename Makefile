@@ -25,7 +25,7 @@ GOAMD64 = v1
 GOPROXY = https://proxy.golang.org|direct
 GOTELEMETRY = off
 OUT = dnsproxy
-GOTOOLCHAIN = go1.26.8
+GOTOOLCHAIN = go1.27.1
 RACE = 0
 REVISION = $${REVISION:-$$(git rev-parse --short HEAD)}
 
@@ -44,13 +44,13 @@ ENV = env \
 	PATH="$${PWD}/bin:$$("$(GO.MACRO)" env GOPATH)/bin:$${PATH}" \
 	RACE='$(RACE)' \
 	REVISION="$(REVISION)" \
-	VERBOSE="$(VERBOSE.MACRO)" \
+	VERBOSE="$(VERBOSE.MACRO)"
 
 # Keep the line above blank.
 
 ENV_MISC = env \
 	PATH="$${PWD}/bin:$$("$(GO.MACRO)" env GOPATH)/bin:$${PATH}" \
-	VERBOSE="$(VERBOSE.MACRO)" \
+	VERBOSE="$(VERBOSE.MACRO)"
 
 # Keep the line above blank.
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/upstream"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/AdguardTeam/golibs/testutil/servicetest"
@@ -161,8 +161,9 @@ func TestCache_expired(t *testing.T) {
 				u:   testUpsAddr,
 				ttl: tc.ttl,
 			}).pack()
-			testCache.items.Set(key, data)
-			t.Cleanup(testCache.items.Clear)
+			shardIdx := int(hashKey(key) % numShards)
+			testCache.setGlcCacheItem(shardIdx, key, data)
+			t.Cleanup(testCache.clearItems)
 
 			r, expired, key := testCache.get(req)
 			assert.Equal(t, msgToKey(req), key)
@@ -720,9 +721,11 @@ func TestCache_getWithSubnet(t *testing.T) {
 	})
 
 	t.Run("with_subnet_3", func(t *testing.T) {
+		// Note: In sharded cache, the IP used for retrieval must match the IP
+		// used for insertion, because each IP hashes to a specific shard.
 		ci, expired, key := c.getWithSubnet(req, &net.IPNet{IP: ip3234, Mask: mask24})
 		assert.False(t, expired)
-		assert.Equal(t, msgToKeyWithSubnet(req, ip1234, 0), key)
+		assert.Equal(t, msgToKeyWithSubnet(req, ip3234, 0), key)
 
 		require.NotNil(t, ci)
 		require.NotNil(t, ci.m)

@@ -3,7 +3,7 @@ package proxy
 import (
 	"testing"
 
-	"github.com/AdguardTeam/dnsproxy/upstream"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/stretchr/testify/assert"
@@ -429,7 +429,7 @@ func BenchmarkUpstreamConfig_GetUpstreamsForDomain(b *testing.B) {
 	//
 	//	goos: darwin
 	//	goarch: arm64
-	//	pkg: github.com/AdguardTeam/dnsproxy/proxy
+	//	pkg: github.com/asop-linu/dnsproxy/proxy
 	//	cpu: Apple M4 Pro
 	//  BenchmarkUpstreamConfig_GetUpstreamsForDomain/get-14    48695488    24.51 ns/op     0 B/op	0 allocs/op
 }

@@ -18,10 +18,10 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/dnscrypt"
-	"github.com/AdguardTeam/dnsproxy/fastip"
-	"github.com/AdguardTeam/dnsproxy/internal/dnsmsg"
-	proxynetutil "github.com/AdguardTeam/dnsproxy/internal/netutil"
-	"github.com/AdguardTeam/dnsproxy/upstream"
+	"github.com/asop-linu/dnsproxy/fastip"
+	"github.com/asop-linu/dnsproxy/internal/dnsmsg"
+	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/contextutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
@@ -981,7 +981,7 @@ func (p *Proxy) cacheWorks(dctx *DNSContext) (ok bool) {
 		// disabled, return false to prevent storing results in the global
 		// cache.
 		//
-		// See https://github.com/AdguardTeam/dnsproxy/issues/169.
+		// See https://github.com/asop-linu/dnsproxy/issues/169.
 		reason = "custom upstreams cache is not configured"
 	case p.cache == nil &&
 		(dctx.CustomUpstreamConfig == nil || dctx.CustomUpstreamConfig.cache == nil):

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/dnsproxytest"
-	"github.com/AdguardTeam/dnsproxy/proxy"
-	"github.com/AdguardTeam/dnsproxy/ratelimit"
+	"github.com/asop-linu/dnsproxy/dnsproxytest"
+	"github.com/asop-linu/dnsproxy/proxy"
+	"github.com/asop-linu/dnsproxy/ratelimit"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"

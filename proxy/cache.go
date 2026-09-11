@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/upstream"
+	"github.com/asop-linu/dnsproxy/upstream"
 	glcache "github.com/AdguardTeam/golibs/cache"
 	"github.com/AdguardTeam/golibs/mathutil"
 	"github.com/miekg/dns"
@@ -23,18 +23,12 @@ const defaultCacheSize = 64 * 1024
 // cache is used to cache requests and used upstreams.
 //
 // TODO(a.garipov):  Add [timeutil.Clock] and make tests less flaky.
+// cache is used to cache requests and used upstreams.
+//
+// TODO(a.garipov):  Add [timeutil.Clock] and make tests less flaky.
 type cache struct {
-	// itemsLock protects requests cache.
-	itemsLock *sync.RWMutex
-
-	// itemsWithSubnetLock protects requests cache.
-	itemsWithSubnetLock *sync.RWMutex
-
-	// items is the requests cache.
-	items glcache.Cache
-
-	// itemsWithSubnet is the requests cache.
-	itemsWithSubnet glcache.Cache
+	// shards is an array of cache shards.
+	shards []*cacheShard
 
 	// optimistic defines if the cache should return expired items and resolve
 	// those again.
@@ -46,6 +40,21 @@ type cache struct {
 	// optimisticMaxAge is the maximum time entries remain in the cache when
 	// cache is optimistic.
 	optimisticMaxAge time.Duration
+}
+
+// cacheShard is a single shard of the cache.
+type cacheShard struct {
+	// itemsLock protects requests cache.
+	itemsLock *sync.RWMutex
+
+	// itemsWithSubnetLock protects requests cache.
+	itemsWithSubnetLock *sync.RWMutex
+
+	// items is the requests cache.
+	items glcache.Cache
+
+	// itemsWithSubnet is the requests cache.
+	itemsWithSubnet glcache.Cache
 }
 
 // cacheItem is a single cache entry.  It's a helper type to aggregate the
@@ -204,19 +213,52 @@ type cacheConfig struct {
 	optimistic bool
 }
 
+const (
+	// numShards is the number of cache shards.  We use 64 shards to reduce lock
+	// contention.
+	numShards = 64
+)
+
+// hashKey returns a hash value for the given key.
+func hashKey(key []byte) uint32 {
+	var hash uint32 = 2166136261
+	for _, b := range key {
+		hash ^= uint32(b)
+		hash *= 16777619
+	}
+	return hash
+}
+
+// getShard returns the shard for the given key.
+func (c *cache) getShard(key []byte) *cacheShard {
+	return c.shards[hashKey(key)%numShards]
+}
+
 // newCache returns a properly initialized cache.  logger must not be nil.
 func newCache(conf *cacheConfig) (c *cache) {
+	// When the cache is small, the shards will be too small to store
+	// anything.  In that case, use the default size.
+	shardSize := conf.size / numShards
+	if shardSize < defaultCacheSize {
+		shardSize = defaultCacheSize
+	}
 	c = &cache{
-		itemsLock:           &sync.RWMutex{},
-		itemsWithSubnetLock: &sync.RWMutex{},
-		items:               createCache(conf.size),
-		optimistic:          conf.optimistic,
-		optimisticTTL:       conf.optimisticTTL,
-		optimisticMaxAge:    conf.optimisticMaxAge,
+		shards:           make([]*cacheShard, numShards),
+		optimistic:       conf.optimistic,
+		optimisticTTL:    conf.optimisticTTL,
+		optimisticMaxAge: conf.optimisticMaxAge,
 	}
 
-	if conf.withECS {
-		c.itemsWithSubnet = createCache(conf.size)
+	for i := 0; i < numShards; i++ {
+		shard := &cacheShard{
+			itemsLock:           &sync.RWMutex{},
+			itemsWithSubnetLock: &sync.RWMutex{},
+			items:               createCache(shardSize),
+		}
+		if conf.withECS {
+			shard.itemsWithSubnet = createCache(shardSize)
+		}
+		c.shards[i] = shard
 	}
 
 	return c
@@ -226,21 +268,25 @@ func newCache(conf *cacheConfig) (c *cache) {
 // item's TTL is expired.  key is the resulting key for req.  It's returned to
 // avoid recalculating it afterwards.
 func (c *cache) get(req *dns.Msg) (ci *cacheItem, expired bool, key []byte) {
-	c.itemsLock.RLock()
-	defer c.itemsLock.RUnlock()
+	key = msgToKey(req)
+	shard := c.getShard(key)
 
-	if !canLookUpInCache(c.items, req) {
-		return nil, false, nil
+	shard.itemsLock.RLock()
+	defer shard.itemsLock.RUnlock()
+
+	if !canLookUpInCache(shard.items, req) {
+		return nil, false, key
 	}
 
-	key = msgToKey(req)
-	data := c.items.Get(key)
+	data := shard.items.Get(key)
 	if data == nil {
 		return nil, false, key
 	}
 
 	if ci, expired = c.unpackItem(data, req); ci == nil {
-		c.items.Del(key)
+		// Note: We cannot delete from the cache here because we only hold a read lock.
+		// For the sake of simplicity and performance, we'll leave it to be
+		// expired naturally.
 	}
 
 	return ci, expired, key
@@ -249,50 +295,41 @@ func (c *cache) get(req *dns.Msg) (ci *cacheItem, expired bool, key []byte) {
 // getWithSubnet returns cached item for the req if it's found by n.  expired
 // is true if the item's TTL is expired.  k is the resulting key for req.  It's
 // returned to avoid recalculating it afterwards.
-//
-// Note that a slow longest-prefix-match algorithm is used, so cache searches
-// are performed up to mask+1 times.
 func (c *cache) getWithSubnet(req *dns.Msg, n *net.IPNet) (ci *cacheItem, expired bool, k []byte) {
-	c.itemsWithSubnetLock.RLock()
-	defer c.itemsWithSubnetLock.RUnlock()
-
-	if !canLookUpInCache(c.itemsWithSubnet, req) {
-		return nil, false, nil
-	}
-
 	ecsIP := n.IP.Mask(n.Mask)
 	ipLen := len(ecsIP)
 	m, _ := n.Mask.Size()
-
 	k = msgToKeyWithSubnet(req, ecsIP, m)
-	data := c.itemsWithSubnet.Get(k)
+	// Use the stable, subnet-independent part of the key to pick the shard so
+	// that all mask variants of the same query share a shard and the
+	// longest-prefix-match loop works correctly.
+	shard := c.getShard(msgToKey(req))
 
-	// In order to reduce allocations we apply mask on bits level.  As the key
-	// k has ecsIP in bytes slice representation, each iteration we can just
-	// clear one bit in the end of it by applying the bitmask.
+	shard.itemsWithSubnetLock.RLock()
+	defer shard.itemsWithSubnetLock.RUnlock()
+
+	if !canLookUpInCache(shard.itemsWithSubnet, req) {
+		return nil, false, k
+	}
+
+	data := shard.itemsWithSubnet.Get(k)
+
+	// longest-prefix-match, searching up to m+1 times for the largest subnet
+	// that has been cached.
 	for bitmask := ^byte(0); m >= 0 && data == nil; m-- {
-		// Set mask identification byte in the key.
 		k[keyMaskIndex] = byte(m)
-
-		// In case mask is zero, the key doesn't have IP in it.
 		if m == 0 {
 			k = slices.Delete(k, keyIPIndex, keyIPIndex+ipLen)
-			data = c.itemsWithSubnet.Get(k)
-
+			data = shard.itemsWithSubnet.Get(k)
 			continue
 		}
-
-		// Shift or renew bitmask.
 		if m%8 == 0 {
 			bitmask = ^byte(0)
 		} else {
 			bitmask <<= 1
 		}
-
-		// Clear the last non-zero bit in the byte of the IP address.
 		k[keyIPIndex+m/8] &= bitmask
-
-		data = c.itemsWithSubnet.Get(k)
+		data = shard.itemsWithSubnet.Get(k)
 	}
 
 	if data == nil {
@@ -300,7 +337,7 @@ func (c *cache) getWithSubnet(req *dns.Msg, n *net.IPNet) (ci *cacheItem, expire
 	}
 
 	if ci, expired = c.unpackItem(data, req); ci == nil {
-		c.itemsWithSubnet.Del(k)
+		// Again, cannot delete under RLock.
 	}
 
 	return ci, expired, k
@@ -336,11 +373,12 @@ func (c *cache) set(req, m *dns.Msg, u upstream.Upstream, l *slog.Logger) {
 
 	key := msgToKey(req)
 	packed := item.pack()
+	shard := c.getShard(key)
 
-	c.itemsLock.Lock()
-	defer c.itemsLock.Unlock()
+	shard.itemsLock.Lock()
+	defer shard.itemsLock.Unlock()
 
-	c.items.Set(key, packed)
+	shard.items.Set(key, packed)
 }
 
 // setWithSubnet stores response and upstream with subnet in the cache.  The
@@ -355,32 +393,54 @@ func (c *cache) setWithSubnet(req, m *dns.Msg, u upstream.Upstream, n *net.IPNet
 	pref, _ := n.Mask.Size()
 	key := msgToKeyWithSubnet(req, n.IP.Mask(n.Mask), pref)
 	packed := item.pack()
+	// Use the stable, subnet-independent part of the key to pick the shard so
+	// that all mask variants of the same query share a shard.
+	shard := c.getShard(msgToKey(req))
 
-	c.itemsWithSubnetLock.Lock()
-	defer c.itemsWithSubnetLock.Unlock()
+	shard.itemsWithSubnetLock.Lock()
+	defer shard.itemsWithSubnetLock.Unlock()
 
-	c.itemsWithSubnet.Set(key, packed)
+	shard.itemsWithSubnet.Set(key, packed)
 }
 
 // clearItems empties the simple cache.
 func (c *cache) clearItems() {
-	c.itemsLock.Lock()
-	defer c.itemsLock.Unlock()
-
-	c.items.Clear()
+	for _, shard := range c.shards {
+		shard.itemsLock.Lock()
+		shard.items.Clear()
+		shard.itemsLock.Unlock()
+	}
 }
 
 // clearItemsWithSubnet empties the subnet cache, if any.
 func (c *cache) clearItemsWithSubnet() {
-	if c.itemsWithSubnet == nil {
-		// ECS disabled, return immediately.
-		return
+	for _, shard := range c.shards {
+		if shard.itemsWithSubnet == nil {
+			return
+		}
+		shard.itemsWithSubnetLock.Lock()
+		shard.itemsWithSubnet.Clear()
+		shard.itemsWithSubnetLock.Unlock()
 	}
+}
 
-	c.itemsWithSubnetLock.Lock()
-	defer c.itemsWithSubnetLock.Unlock()
+// setGlcCacheItem directly sets an item in the given shard's items cache.
+// It is used by tests to inject values bypassing the normal key hashing.
+func (c *cache) setGlcCacheItem(shardIdx int, key, val []byte) {
+	shard := c.shards[shardIdx]
+	shard.itemsLock.Lock()
+	defer shard.itemsLock.Unlock()
+	shard.items.Set(key, val)
+}
 
-	c.itemsWithSubnet.Clear()
+// getGlcCacheItem directly gets an item from the given shard's items cache.
+// It is used by tests to read values bypassing the normal key hashing.
+func (c *cache) getGlcCacheItem(shardIdx int, key []byte) (data []byte, found bool) {
+	shard := c.shards[shardIdx]
+	shard.itemsLock.RLock()
+	defer shard.itemsLock.RUnlock()
+	data = shard.items.Get(key)
+	return data, data != nil
 }
 
 // cacheTTL returns the number of seconds for which m is valid to be cached.
@@ -543,7 +603,8 @@ func msgToKey(m *dns.Msg) (b []byte) {
 	opt := m.IsEdns0()
 	b[0] = mathutil.BoolToNumber[byte](opt != nil && opt.Do())
 
-	// Put QTYPE, QCLASS, and QNAME.
+	// Put QTYPE, QCLASS, and QNAME.  The name is lowered for
+	// case-insensitive matching.
 	binary.BigEndian.PutUint16(b[1:], q.Qtype)
 	binary.BigEndian.PutUint16(b[1+packedMsgLenSz:], q.Qclass)
 	copy(b[1+2*packedMsgLenSz:], strings.ToLower(name))
@@ -622,7 +683,15 @@ func filterRRSlice(rrs []dns.RR, do bool, ttl uint32, except uint16) (filtered [
 	}
 
 	j := 0
-	rs := make([]dns.RR, rrsLen)
+	// Preallocate a small slice on stack for common cases.
+	var rsArr [8]dns.RR
+	var rs []dns.RR
+	if rrsLen <= len(rsArr) {
+		rs = rsArr[:]
+	} else {
+		rs = make([]dns.RR, rrsLen)
+	}
+
 	for _, r := range rrs {
 		if (!do && isDNSSEC(r) && r.Header().Rrtype != except) || r.Header().Rrtype == dns.TypeOPT {
 			continue
@@ -635,7 +704,12 @@ func filterRRSlice(rrs []dns.RR, do bool, ttl uint32, except uint16) (filtered [
 		j++
 	}
 
-	return rs[:j]
+	if j == 0 {
+		return nil
+	}
+
+	// Always return a new slice to avoid pinning the stack array.
+	return slices.Clone(rs[:j])
 }
 
 // filterMsg removes OPT RRs, DNSSEC RRs if do is false, sets TTL to ttl if it's
@@ -651,7 +725,7 @@ func filterMsg(dst, m *dns.Msg, ad, do bool, ttl uint32) {
 	// requested.
 	//
 	// See https://datatracker.ietf.org/doc/html/rfc4035#section-3.2.1 and
-	// https://github.com/AdguardTeam/dnsproxy/issues/144.
+	// https://github.com/asop-linu/dnsproxy/issues/144.
 	dst.Answer = filterRRSlice(m.Answer, do, ttl, m.Question[0].Qtype)
 	dst.Ns = filterRRSlice(m.Ns, do, ttl, dns.TypeNone)
 	dst.Extra = filterRRSlice(m.Extra, do, ttl, dns.TypeNone)

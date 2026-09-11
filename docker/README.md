@@ -4,7 +4,7 @@ A simple DNS proxy server that supports all existing DNS protocols including `DN
 
 Learn more about dnsproxy and its full capabilities in its [Github repo][dnsproxy].
 
-[dnsproxy]: https://github.com/AdguardTeam/dnsproxy
+[dnsproxy]: https://github.com/asop-linu/dnsproxy
 
 ## Quick start
 

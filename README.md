@@ -1,7 +1,7 @@
 # DNS Proxy <!-- omit in toc -->
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/AdguardTeam/dnsproxy.svg)](https://pkg.go.dev/github.com/AdguardTeam/dnsproxy)
-[![Go Report Card](https://goreportcard.com/badge/github.com/AdguardTeam/dnsproxy)](https://goreportcard.com/report/AdguardTeam/dnsproxy)
+[![Go Reference](https://pkg.go.dev/badge/github.com/asop-linu/dnsproxy.svg)](https://pkg.go.dev/github.com/asop-linu/dnsproxy)
+[![Go Report Card](https://goreportcard.com/badge/github.com/asop-linu/dnsproxy)](https://goreportcard.com/report/AdguardTeam/dnsproxy)
 
 A simple DNS proxy server that supports all existing DNS protocols including
 `DNS-over-TLS`, `DNS-over-HTTPS`, `DNSCrypt`, and `DNS-over-QUIC`. Moreover,
@@ -31,7 +31,7 @@ There are several options how to install `dnsproxy`.
 2. Use the [official Docker image][docker].
 3. Build it yourself (see the instruction below).
 
-[releases]: https://github.com/AdguardTeam/dnsproxy/releases
+[releases]: https://github.com/asop-linu/dnsproxy/releases
 [docker]: https://hub.docker.com/r/adguard/dnsproxy
 
 ## How to build

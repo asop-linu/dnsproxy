@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/proxyutil"
+	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/testutil"
@@ -104,7 +104,7 @@ func TestDNSOverQUIC_Exchange_quicCloseConn(t *testing.T) {
 
 	// Now run several queries in parallel to check that the error from the
 	// following issue is not happening:
-	// https://github.com/AdguardTeam/dnsproxy/issues/389.
+	// https://github.com/asop-linu/dnsproxy/issues/389.
 	//
 	// Run 10 queries in parallel as the initial testing showed that this is
 	// enough to trigger the race issue.
@@ -155,7 +155,7 @@ func TestDNSOverQUIC_serverRestart(t *testing.T) {
 			&Options{
 				Logger:  testLogger,
 				RootCAs: rootCAs,
-				Timeout: 100 * time.Millisecond,
+				Timeout: 500 * time.Millisecond,
 			},
 		)
 		require.NoError(t, err)

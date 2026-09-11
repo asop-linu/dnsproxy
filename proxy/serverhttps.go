@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/httphdr"
 	"github.com/AdguardTeam/golibs/ioutil"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"

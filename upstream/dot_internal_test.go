@@ -306,7 +306,7 @@ func BenchmarkDoTUpstream(b *testing.B) {
 	//
 	//	goos: darwin
 	//	goarch: amd64
-	//	pkg: github.com/AdguardTeam/dnsproxy/upstream
+	//	pkg: github.com/asop-linu/dnsproxy/upstream
 	//	cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
 	//	BenchmarkDoTUpstream/exchange_p-12         	   90169	     13303 ns/op	    2637 B/op	      45 allocs/op
 }
