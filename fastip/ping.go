@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 )
 
 // pingTCPTimeout is a TCP connection timeout.  It's higher than pingWaitTimeout

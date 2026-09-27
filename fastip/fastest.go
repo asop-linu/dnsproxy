@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/cache"
 	"github.com/AdguardTeam/golibs/container"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/miekg/dns"
 )
 

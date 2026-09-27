@@ -14,6 +14,7 @@
 build
 dnsproxy
 dnsproxy.exe
+dnsproxy-test
 example.crt
 example.key
 coverage.txt

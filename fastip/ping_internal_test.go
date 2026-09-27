@@ -7,10 +7,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/asop-linu/dnsproxy/internal/dnsproxytest"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/asop-linu/dnsproxy/internal/dnsproxytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

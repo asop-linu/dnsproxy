@@ -3,9 +3,9 @@ package dnsproxytest
 import (
 	"context"
 
+	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/asop-linu/dnsproxy/proxy"
 	"github.com/asop-linu/dnsproxy/upstream"
-	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/qlogwriter"

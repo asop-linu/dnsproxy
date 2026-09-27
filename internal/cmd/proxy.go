@@ -13,16 +13,16 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/dnscrypt"
+	"github.com/AdguardTeam/golibs/errors"
+	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/AdguardTeam/golibs/osutil"
 	"github.com/asop-linu/dnsproxy/internal/dnsmsg"
 	"github.com/asop-linu/dnsproxy/internal/middleware"
 	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
 	"github.com/asop-linu/dnsproxy/proxy"
 	"github.com/asop-linu/dnsproxy/ratelimit"
 	"github.com/asop-linu/dnsproxy/upstream"
-	"github.com/AdguardTeam/golibs/errors"
-	"github.com/AdguardTeam/golibs/logutil/slogutil"
-	"github.com/AdguardTeam/golibs/netutil"
-	"github.com/AdguardTeam/golibs/osutil"
 	"gopkg.in/yaml.v3"
 )
 

@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/proxy"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/osutil"
 	"github.com/AdguardTeam/golibs/version"
+	"github.com/asop-linu/dnsproxy/proxy"
 )
 
 // Main is the entrypoint of dnsproxy CLI.  Main may accept arguments, such as

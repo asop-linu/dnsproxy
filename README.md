@@ -1,7 +1,7 @@
 # DNS Proxy <!-- omit in toc -->
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/asop-linu/dnsproxy.svg)](https://pkg.go.dev/github.com/asop-linu/dnsproxy)
-[![Go Report Card](https://goreportcard.com/badge/github.com/asop-linu/dnsproxy)](https://goreportcard.com/report/AdguardTeam/dnsproxy)
+[![Go Report Card](https://goreportcard.com/badge/github.com/asop-linu/dnsproxy)](https://goreportcard.com/report/asop-linu/dnsproxy)
 
 A simple DNS proxy server that supports all existing DNS protocols including
 `DNS-over-TLS`, `DNS-over-HTTPS`, `DNSCrypt`, and `DNS-over-QUIC`. Moreover,

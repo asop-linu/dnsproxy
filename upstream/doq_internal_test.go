@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"

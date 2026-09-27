@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AdguardTeam/golibs/errors"
+	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/asop-linu/dnsproxy/dnsproxytest"
 	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/asop-linu/dnsproxy/upstream"
-	"github.com/AdguardTeam/golibs/errors"
-	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

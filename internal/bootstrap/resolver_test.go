@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
