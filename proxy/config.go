@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/dnscrypt"
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/contextutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 )
 
 // LogPrefix is a prefix for logging.

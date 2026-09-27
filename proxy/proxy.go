@@ -18,10 +18,6 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/dnscrypt"
-	"github.com/asop-linu/dnsproxy/fastip"
-	"github.com/asop-linu/dnsproxy/internal/dnsmsg"
-	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/contextutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
@@ -30,6 +26,10 @@ import (
 	"github.com/AdguardTeam/golibs/syncutil"
 	"github.com/AdguardTeam/golibs/timeutil"
 	"github.com/AdguardTeam/golibs/validate"
+	"github.com/asop-linu/dnsproxy/fastip"
+	"github.com/asop-linu/dnsproxy/internal/dnsmsg"
+	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -527,15 +527,22 @@ func (p *Proxy) Start(ctx context.Context) (err error) {
 
 	err = p.startListeners(ctx)
 	if err != nil {
-		closeErr := errors.Join(p.closeListeners(nil)...)
+		closeErr := errors.Join(p.closeListeners()...)
 
 		return fmt.Errorf("configuring listeners: %w", errors.WithDeferred(err, closeErr))
 	}
 
 	err = p.initDNSCryptServers(ctx)
 	if err != nil {
+		dnscryptErr := shutdownDNSCryptServers(ctx, p.dnsCryptServers)
+		p.dnsCryptServers = nil
+		closeErr := errors.Join(p.closeListeners()...)
+
 		// Don't wrap the error since it's informative enough as is.
-		return err
+		return fmt.Errorf(
+			"initializing dnscrypt: %w",
+			errors.WithDeferred(err, errors.WithDeferred(dnscryptErr, closeErr)),
+		)
 	}
 
 	// Use context without cancel to prevent listeners' context from being
@@ -544,10 +551,11 @@ func (p *Proxy) Start(ctx context.Context) (err error) {
 
 	err = p.startDNSCryptServers(context.WithoutCancel(ctx))
 	if err != nil {
+		closeErr := errors.Join(p.closeListeners()...)
 		p.dnsCryptServers = nil
 
 		// Don't wrap the error since it's informative enough as is.
-		return err
+		return fmt.Errorf("starting dnscrypt: %w", errors.WithDeferred(err, closeErr))
 	}
 
 	p.started = true
@@ -590,7 +598,7 @@ func (p *Proxy) Shutdown(ctx context.Context) (err error) {
 		return nil
 	}
 
-	errs := p.closeListeners(nil)
+	errs := p.closeListeners()
 
 	for _, u := range []*UpstreamConfig{
 		p.upstreamConf,
@@ -619,12 +627,8 @@ func (p *Proxy) Shutdown(ctx context.Context) (err error) {
 }
 
 // closeListeners closes all active listeners and returns the occurred errors.
-//
-// TODO(e.burkov):  Remove the argument if it remains unused.
-func (p *Proxy) closeListeners(errs []error) (res []error) {
-	res = errs
-
-	res = closeAll(res, p.tcpListen...)
+func (p *Proxy) closeListeners() (res []error) {
+	res = closeAll(nil, p.tcpListen...)
 	p.tcpListen = nil
 
 	res = closeAll(res, p.udpListen...)
@@ -879,9 +883,20 @@ const defaultUDPBufSize = 2048
 // Resolve is the default resolving method used by the DNS proxy to query
 // upstream servers.  It expects dctx is filled with the client's request.
 func (p *Proxy) Resolve(ctx context.Context, dctx *DNSContext) (err error) {
-	if p.enableEDNSClientSubnet {
-		dctx.processECS(p.ednsAddr, p.logger)
+	// Resolve is exported and may be called by embedders directly, bypassing
+	// the request validation performed by the server.  The rest of the code
+	// indexes into the question, so make sure there is exactly one.
+	if !p.validateResolveRequest(dctx) {
+		return nil
 	}
+
+	// Record whether the client's own message had EDNS0 before the proxy
+	// possibly injects an EDNS Client Subnet option into it, so that the
+	// response scrubbing and the cache-hit ECS injection below don't add EDNS
+	// options to clients that haven't requested any.
+	dctx.clientHadEDNS0 = dctx.Req.IsEdns0() != nil
+
+	p.applyECS(dctx)
 
 	dctx.calcFlagsAndSize()
 
@@ -903,6 +918,12 @@ func (p *Proxy) Resolve(ctx context.Context, dctx *DNSContext) (err error) {
 		var loaded bool
 		loaded, err = p.pendingRequests.queue(ctx, dctx)
 		if loaded {
+			// This request has been deduplicated with an identical one already
+			// in flight.  Complete it the same way as a cache hit for this
+			// particular client, since different clients may have different
+			// EDNS states.
+			p.finishDeduped(dctx)
+
 			return err
 		}
 		defer func() { p.pendingRequests.done(ctx, dctx, err) }()
@@ -910,6 +931,11 @@ func (p *Proxy) Resolve(ctx context.Context, dctx *DNSContext) (err error) {
 		if p.replyFromCache(dctx) {
 			// Complete the response from cache.
 			filterMsg(dctx.Res, dctx.Res, dctx.adBit, dctx.doBit, 0)
+
+			// Add the EDNS Client Subnet option after filtering, since
+			// filterMsg strips all OPT records, including the ECS one.
+			setCachedECS(dctx)
+
 			dctx.scrub()
 
 			return nil
@@ -939,6 +965,44 @@ func (p *Proxy) Resolve(ctx context.Context, dctx *DNSContext) (err error) {
 	dctx.scrub()
 
 	return err
+}
+
+// finishDeduped completes a response that was loaded from an in-flight pending
+// request.  It filters the response and adds the EDNS Client Subnet option for
+// this particular client, since different clients may have different EDNS
+// states.  d must not be nil.
+func (p *Proxy) finishDeduped(dctx *DNSContext) {
+	if dctx.Res != nil {
+		filterMsg(dctx.Res, dctx.Res, dctx.adBit, dctx.doBit, 0)
+		setCachedECS(dctx)
+		dctx.scrub()
+	}
+}
+
+// applyECS injects the EDNS Client Subnet option into the client's request
+// when the proxy is configured to do so.
+func (p *Proxy) applyECS(dctx *DNSContext) {
+	if p.enableEDNSClientSubnet {
+		dctx.processECS(p.ednsAddr, p.logger)
+	}
+}
+
+// validateResolveRequest validates the request of dctx and generates a FORMERR
+// response for an invalid one.  It reports whether the request is valid.
+func (p *Proxy) validateResolveRequest(dctx *DNSContext) (ok bool) {
+	if dctx.Req == nil {
+		dctx.Res = p.messages.NewMsgFORMERR(&dns.Msg{})
+
+		return false
+	}
+
+	if len(dctx.Req.Question) != 1 {
+		dctx.Res = p.messages.NewMsgFORMERR(dctx.Req)
+
+		return false
+	}
+
+	return true
 }
 
 // validateRequest returns a response for invalid request or nil if the request

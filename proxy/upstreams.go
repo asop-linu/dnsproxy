@@ -8,10 +8,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/container"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 )
 
 // UnqualifiedNames is a key for [UpstreamConfig.DomainReservedUpstreams] map to
@@ -467,7 +467,7 @@ var _ io.Closer = (*UpstreamConfig)(nil)
 
 // Close implements the [io.Closer] interface for *UpstreamConfig.
 func (uc *UpstreamConfig) Close() (err error) {
-	closeErrs := closeAll(nil, uc.Upstreams...)
+	all := slices.Clone(uc.Upstreams)
 
 	for _, specUps := range []map[string][]upstream.Upstream{
 		uc.DomainReservedUpstreams,
@@ -481,13 +481,42 @@ func (uc *UpstreamConfig) Close() (err error) {
 		slices.SortStableFunc(domains, strings.Compare)
 
 		for _, domain := range domains {
-			closeErrs = closeAll(closeErrs, specUps[domain]...)
+			all = append(all, specUps[domain]...)
 		}
 	}
+
+	// The same upstream instance may be a default one and a domain-specific
+	// one at the same time, so close each unique instance only once.
+	closeErrs := closeAll(nil, uniqueUpstreams(all)...)
 
 	if len(closeErrs) > 0 {
 		return fmt.Errorf("failed to close some upstreams: %w", errors.Join(closeErrs...))
 	}
 
 	return nil
+}
+
+// uniqueUpstreams returns list without duplicate upstream instances, preserving
+// the original order.
+func uniqueUpstreams(list []upstream.Upstream) (deduped []upstream.Upstream) {
+	for _, u := range list {
+		if u == nil {
+			continue
+		}
+
+		unique := true
+		for _, existing := range deduped {
+			if existing == u {
+				unique = false
+
+				break
+			}
+		}
+
+		if unique {
+			deduped = append(deduped, u)
+		}
+	}
+
+	return deduped
 }

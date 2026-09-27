@@ -1,8 +1,8 @@
 package proxy
 
 import (
-	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/miekg/dns"
 )
 

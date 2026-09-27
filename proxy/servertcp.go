@@ -8,12 +8,12 @@ import (
 	"io"
 	"net"
 
-	"github.com/asop-linu/dnsproxy/internal/bootstrap"
-	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/syncutil"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
+	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
 	"github.com/miekg/dns"
 )
 
@@ -193,13 +193,14 @@ const errTooLarge errors.Error = "dns message is too large"
 // length from conn.
 func readPrefixed(conn net.Conn) (b []byte, err error) {
 	l := make([]byte, 2)
-	_, err = conn.Read(l)
+	_, err = io.ReadFull(conn, l)
 	if err != nil {
 		return nil, fmt.Errorf("reading len: %w", err)
 	}
 
 	packetLen := binary.BigEndian.Uint16(l)
-	if packetLen > dns.MaxMsgSize {
+	if packetLen == 0 {
+		// An empty message is not a valid DNS message.
 		return nil, errTooLarge
 	}
 

@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/AdguardTeam/dnscrypt"
-	"github.com/asop-linu/dnsproxy/internal/dnsproxytest"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/AdguardTeam/golibs/testutil/servicetest"
 	"github.com/ameshkov/dnsstamps"
+	"github.com/asop-linu/dnsproxy/internal/dnsproxytest"
 	"github.com/stretchr/testify/require"
 )
 

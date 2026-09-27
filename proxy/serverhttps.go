@@ -13,10 +13,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/httphdr"
 	"github.com/AdguardTeam/golibs/ioutil"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"

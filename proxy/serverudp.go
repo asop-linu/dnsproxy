@@ -7,13 +7,13 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/asop-linu/dnsproxy/internal/bootstrap"
-	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/syncutil"
 	"github.com/AdguardTeam/golibs/validate"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
+	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
 	"github.com/miekg/dns"
 )
 
@@ -110,17 +110,33 @@ func (p *Proxy) udpPacketLoop(ctx context.Context, conn *net.UDPConn, reqSema sy
 			}
 			go func() {
 				defer reqSema.Release()
+				defer slogutil.RecoverAndLog(ctx, p.logger)
 
 				p.udpHandlePacket(ctx, packet, localIP, remoteAddr, conn)
 			}()
 		}
 
-		if err != nil {
-			logUDPConnError(err, conn, p.logger)
+		if err == nil {
+			continue
+		}
 
+		logUDPConnError(err, conn, p.logger)
+
+		if shouldStopUDP(err, ctx) {
+			// The connection is closed or the loop is being shut down, so
+			// there is no point in continuing.
 			break
 		}
+
+		// A transient read error (e.g. a malformed control message) must not
+		// stop the whole listener.
 	}
+}
+
+// shouldStopUDP reports whether err means that the UDP read loop must not be
+// continued.
+func shouldStopUDP(err error, ctx context.Context) (ok bool) {
+	return errors.Is(err, net.ErrClosed) || errors.Is(err, ctx.Err())
 }
 
 // logUDPConnError writes suitable log message for given err.

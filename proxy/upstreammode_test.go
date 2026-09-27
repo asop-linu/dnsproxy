@@ -3,8 +3,8 @@ package proxy_test
 import (
 	"testing"
 
-	"github.com/asop-linu/dnsproxy/proxy"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/asop-linu/dnsproxy/proxy"
 )
 
 func TestUpstreamMode_encoding(t *testing.T) {

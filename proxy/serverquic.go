@@ -9,12 +9,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/internal/bootstrap"
-	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/syncutil"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
+	"github.com/asop-linu/dnsproxy/proxyutil"
 	"github.com/bluele/gcache"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
@@ -155,6 +155,7 @@ func (p *Proxy) quicPacketLoop(
 		}
 		go func() {
 			defer reqSema.Release()
+			defer slogutil.RecoverAndLog(ctx, p.logger)
 
 			p.handleQUICConnection(ctx, conn, reqSema)
 		}()
@@ -240,6 +241,7 @@ func (p *Proxy) handleQUICConnection(
 		}
 		go func() {
 			defer reqSema.Release()
+			defer slogutil.RecoverAndLog(ctx, p.logger)
 
 			p.handleQUICStream(ctx, stream, conn)
 
