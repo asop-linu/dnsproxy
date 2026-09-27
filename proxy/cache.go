@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/upstream"
 	glcache "github.com/AdguardTeam/golibs/cache"
 	"github.com/AdguardTeam/golibs/mathutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/miekg/dns"
 )
 
@@ -287,6 +287,7 @@ func (c *cache) get(req *dns.Msg) (ci *cacheItem, expired bool, key []byte) {
 		// Note: We cannot delete from the cache here because we only hold a read lock.
 		// For the sake of simplicity and performance, we'll leave it to be
 		// expired naturally.
+		return nil, expired, key
 	}
 
 	return ci, expired, key
@@ -312,23 +313,26 @@ func (c *cache) getWithSubnet(req *dns.Msg, n *net.IPNet) (ci *cacheItem, expire
 		return nil, false, k
 	}
 
+	// A subnet lookup without an address cannot succeed, since the key above
+	// would lack the address bytes and the walk below would read out of range.
+	if ipLen == 0 {
+		return nil, false, k
+	}
+
 	data := shard.itemsWithSubnet.Get(k)
 
 	// longest-prefix-match, searching up to m+1 times for the largest subnet
 	// that has been cached.
-	for bitmask := ^byte(0); m >= 0 && data == nil; m-- {
+	for ; m >= 0 && data == nil; m-- {
 		k[keyMaskIndex] = byte(m)
 		if m == 0 {
+			// The whole address falls outside of the searched prefix, so drop
+			// it and search for the entry without one.
 			k = slices.Delete(k, keyIPIndex, keyIPIndex+ipLen)
-			data = shard.itemsWithSubnet.Get(k)
-			continue
-		}
-		if m%8 == 0 {
-			bitmask = ^byte(0)
 		} else {
-			bitmask <<= 1
+			maskKey(k, m, ipLen)
 		}
-		k[keyIPIndex+m/8] &= bitmask
+
 		data = shard.itemsWithSubnet.Get(k)
 	}
 
@@ -338,9 +342,24 @@ func (c *cache) getWithSubnet(req *dns.Msg, n *net.IPNet) (ci *cacheItem, expire
 
 	if ci, expired = c.unpackItem(data, req); ci == nil {
 		// Again, cannot delete under RLock.
+		return nil, expired, k
 	}
 
 	return ci, expired, k
+}
+
+// maskKey clears the bits of the IP address in k that don't belong to a subnet
+// with the prefix length of m.  A byte-aligned m clears the entire byte, and
+// all the bytes after it are cleared as well, otherwise the lookup key won't
+// match the cached one that has those bytes zeroed.
+func maskKey(k []byte, m, ipLen int) {
+	byteMask := byte(0xFF) << (8 - m%8)
+	if m/8 < ipLen {
+		k[keyIPIndex+m/8] &= byteMask
+	}
+	for i := keyIPIndex + m/8 + 1; i < keyIPIndex+ipLen; i++ {
+		k[i] = 0
+	}
 }
 
 // canLookUpInCache returns true if these parameters could be used to make a
@@ -400,6 +419,12 @@ func (c *cache) setWithSubnet(req, m *dns.Msg, u upstream.Upstream, n *net.IPNet
 	shard.itemsWithSubnetLock.Lock()
 	defer shard.itemsWithSubnetLock.Unlock()
 
+	if shard.itemsWithSubnet == nil {
+		// The cache was created without EDNS Client Subnet support, so there
+		// is no subnet storage to put the entry into.
+		return
+	}
+
 	shard.itemsWithSubnet.Set(key, packed)
 }
 
@@ -416,7 +441,7 @@ func (c *cache) clearItems() {
 func (c *cache) clearItemsWithSubnet() {
 	for _, shard := range c.shards {
 		if shard.itemsWithSubnet == nil {
-			return
+			continue
 		}
 		shard.itemsWithSubnetLock.Lock()
 		shard.itemsWithSubnet.Clear()
@@ -693,7 +718,7 @@ func filterRRSlice(rrs []dns.RR, do bool, ttl uint32, except uint16) (filtered [
 	}
 
 	for _, r := range rrs {
-		if (!do && isDNSSEC(r) && r.Header().Rrtype != except) || r.Header().Rrtype == dns.TypeOPT {
+		if shouldFilterRR(r, do, except) {
 			continue
 		}
 
@@ -710,6 +735,17 @@ func filterRRSlice(rrs []dns.RR, do bool, ttl uint32, except uint16) (filtered [
 
 	// Always return a new slice to avoid pinning the stack array.
 	return slices.Clone(rs[:j])
+}
+
+// shouldFilterRR reports whether r must be filtered out of the filtered
+// message.  The OPT record is always removed, and DNSSEC records are removed
+// unless the DO bit is set or they are of the except type.
+func shouldFilterRR(r dns.RR, do bool, except uint16) (ok bool) {
+	if r.Header().Rrtype == dns.TypeOPT {
+		return true
+	}
+
+	return !do && isDNSSEC(r) && r.Header().Rrtype != except
 }
 
 // filterMsg removes OPT RRs, DNSSEC RRs if do is false, sets TTL to ttl if it's

@@ -5,11 +5,11 @@ import (
 	"net/netip"
 	"slices"
 
-	"github.com/asop-linu/dnsproxy/proxyutil"
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/asop-linu/dnsproxy/proxyutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/miekg/dns"
 )
 

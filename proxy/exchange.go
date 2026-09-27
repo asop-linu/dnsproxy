@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/miekg/dns"
 	"gonum.org/v1/gonum/stat/sampleuv"
 )

@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/AdguardTeam/golibs/testutil/servicetest"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -791,6 +791,188 @@ func TestCache_getWithSubnet_mask(t *testing.T) {
 		})
 		assert.False(t, expired)
 		assert.Equal(t, msgToKeyWithSubnet(req, noMatchIP, 0), key)
+		assert.Nil(t, ci)
+	})
+}
+
+// TestCache_subnetIsolation asserts that the entries of the subnet cache are
+// keyed by the client subnet, so that a response resolved for one subnet is
+// never served to a different one.
+//
+// See https://github.com/asop-linu/dnsproxy/issues/.
+func TestCache_subnetIsolation(t *testing.T) {
+	const testFQDN = "example.com."
+
+	netOf := func(ipStr string, ones int) (n *net.IPNet) {
+		ip := net.ParseIP(ipStr)
+
+		return &net.IPNet{IP: ip, Mask: net.CIDRMask(ones, netutil.IPv4BitLen)}
+	}
+
+	respWith := func(ipStr string) (resp *dns.Msg) {
+		req := (&dns.Msg{}).SetQuestion(testFQDN, dns.TypeA)
+
+		return (&dns.Msg{
+			Answer: []dns.RR{newRR(t, testFQDN, dns.TypeA, 300, net.ParseIP(ipStr))},
+		}).SetReply(req)
+	}
+
+	answerIP := func(ci *cacheItem) (ip net.IP) {
+		t.Helper()
+
+		require.NotNil(t, ci)
+
+		a := testutil.RequireTypeAssert[*dns.A](t, ci.m.Answer[0])
+
+		return a.A
+	}
+
+	// assertIP compares addresses with [net.IP.Equal], since [net.ParseIP]
+	// returns a 16-byte representation, while an A record holds 4 bytes.
+	assertIP := func(t *testing.T, want net.IP, ci *cacheItem) {
+		t.Helper()
+
+		if got := answerIP(ci); !want.Equal(got) {
+			assert.Fail(t, "unexpected answer", "want %v, got %v", want, got)
+		}
+	}
+
+	req := (&dns.Msg{}).SetQuestion(testFQDN, dns.TypeA)
+	c := newTestCache(t, &cacheConfig{withECS: true})
+
+	netA := netOf("45.155.205.0", 24)
+	netB := netOf("185.87.111.0", 24)
+	ansA := net.ParseIP("45.142.246.128")
+	ansB := net.ParseIP("135.181.102.167")
+
+	t.Run("distinct_subnets_do_not_overwrite", func(t *testing.T) {
+		c.setWithSubnet(req, respWith("45.142.246.128"), upstreamWithAddr, netA, testLogger)
+		c.setWithSubnet(req, respWith("135.181.102.167"), upstreamWithAddr, netB, testLogger)
+
+		ci, expired, _ := c.getWithSubnet(req, netA)
+		assert.False(t, expired)
+		assertIP(t, ansA, ci)
+
+		ci, expired, _ = c.getWithSubnet(req, netB)
+		assert.False(t, expired)
+		assertIP(t, ansB, ci)
+	})
+
+	t.Run("host_bits_share_one_entry", func(t *testing.T) {
+		// Two addresses from the same subnet must resolve to the same entry, no
+		// matter which host bits the client puts into the request.
+		ci, expired, _ := c.getWithSubnet(req, netOf("45.155.205.37", 24))
+		assert.False(t, expired)
+		assertIP(t, ansA, ci)
+
+		ci, expired, _ = c.getWithSubnet(req, netOf("45.155.205.200", 24))
+		assert.False(t, expired)
+		assertIP(t, ansA, ci)
+	})
+
+	t.Run("unrelated_subnet_misses", func(t *testing.T) {
+		// A subnet that was never cached must not fall back to any other
+		// entry.
+		ci, _, _ := c.getWithSubnet(req, netOf("91.199.242.0", 24))
+		assert.Nil(t, ci)
+	})
+
+	t.Run("null_subnet_entry_not_written", func(t *testing.T) {
+		// The old code stored the response of a non-echoing upstream under a
+		// null subnet, which the longest-prefix-match lookup in getWithSubnet
+		// then matched for every other subnet.  cacheResp no longer writes
+		// such an entry, so the response must be reachable only through the
+		// requested subnet.
+		prx := mustNew(t, &Config{
+			Logger:                 testLogger,
+			UpstreamConfig:         &UpstreamConfig{Upstreams: []upstream.Upstream{upstreamWithAddr}},
+			EnableEDNSClientSubnet: true,
+			CacheEnabled:           true,
+			CacheSizeBytes:         testCacheSize,
+		})
+
+		d := &DNSContext{
+			Req:    (&dns.Msg{}).SetQuestion(testFQDN, dns.TypeA),
+			Res:    respWith("45.142.246.128"),
+			ReqECS: netA,
+		}
+		prx.cacheResp(d)
+
+		ci, _, _ := prx.cache.getWithSubnet(d.Req, netA)
+		require.NotNil(t, ci)
+		assertIP(t, ansA, ci)
+
+		// No null-subnet entry may exist, otherwise it would shadow every
+		// other subnet through the longest-prefix-match lookup.
+		ci, _, _ = prx.cache.getWithSubnet(d.Req, &net.IPNet{IP: nil, Mask: nil})
+		assert.Nil(t, ci, "no null-subnet entry must exist")
+
+		// And an unrelated subnet must not pick up this answer.
+		ci, _, _ = prx.cache.getWithSubnet(d.Req, netOf("91.199.242.0", 24))
+		assert.Nil(t, ci, "unrelated subnet must not match")
+	})
+
+	t.Run("zero_mask_no_panic", func(t *testing.T) {
+		// A /0 subnet must not panic in the longest-prefix-match loop.
+		assert.NotPanics(t, func() {
+			c.getWithSubnet(req, &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, netutil.IPv4BitLen)})
+		})
+	})
+}
+
+// TestCache_getWithSubnet_lpm asserts the longest-prefix-match behavior between
+// the subnets of different lengths.
+func TestCache_getWithSubnet_lpm(t *testing.T) {
+	const testFQDN = "example.com."
+
+	req := (&dns.Msg{}).SetQuestion(testFQDN, dns.TypeA)
+	resp := (&dns.Msg{
+		Answer: []dns.RR{newRR(t, testFQDN, dns.TypeA, 300, net.ParseIP("45.142.246.128"))},
+	}).SetReply(req)
+
+	c := newTestCache(t, &cacheConfig{withECS: true})
+	c.setWithSubnet(req, resp, upstreamWithAddr, &net.IPNet{
+		IP:   net.ParseIP("45.155.192.0"),
+		Mask: net.CIDRMask(18, netutil.IPv4BitLen),
+	}, testLogger)
+
+	answerIP := func(ci *cacheItem) (ip net.IP) {
+		t.Helper()
+
+		require.NotNil(t, ci)
+
+		return testutil.RequireTypeAssert[*dns.A](t, ci.m.Answer[0]).A
+	}
+
+	// assertIP compares addresses with [net.IP.Equal], since [net.ParseIP]
+	// returns a 16-byte representation, while an A record holds 4 bytes.
+	assertIP := func(t *testing.T, want net.IP, ci *cacheItem, msgAndArgs ...any) {
+		t.Helper()
+
+		got := answerIP(ci)
+		if !want.Equal(got) {
+			assert.Fail(t, "unexpected answer", "want %v, got %v", want, got)
+		}
+	}
+
+	wantIP := net.ParseIP("45.142.246.128")
+
+	t.Run("longer_mask_hits", func(t *testing.T) {
+		for _, ones := range []int{19, 20, 24, 32} {
+			ci, expired, _ := c.getWithSubnet(req, &net.IPNet{
+				IP:   net.ParseIP("45.155.205.37"),
+				Mask: net.CIDRMask(ones, netutil.IPv4BitLen),
+			})
+			assert.False(t, expired)
+			assertIP(t, wantIP, ci, "mask /%d", ones)
+		}
+	})
+
+	t.Run("outside_of_cached_subnet_misses", func(t *testing.T) {
+		ci, _, _ := c.getWithSubnet(req, &net.IPNet{
+			IP:   net.ParseIP("91.199.242.1"),
+			Mask: net.CIDRMask(24, netutil.IPv4BitLen),
+		})
 		assert.Nil(t, ci)
 	})
 }

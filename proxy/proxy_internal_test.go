@@ -16,13 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asop-linu/dnsproxy/upstream"
 	glcache "github.com/AdguardTeam/golibs/cache"
 	"github.com/AdguardTeam/golibs/contextutil"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/AdguardTeam/golibs/testutil/servicetest"
+	"github.com/asop-linu/dnsproxy/upstream"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1163,6 +1163,141 @@ func TestECSProxy(t *testing.T) {
 
 		assert.Equal(t, ip4323, firstIP(d.Res))
 		assert.Nil(t, ecsReqIP)
+	})
+}
+
+// TestECSProxyNoEchoUpstream asserts that the responses of an upstream that
+// doesn't echo the EDNS Client Subnet option back are still cached per client
+// subnet, and not into a single shared entry.
+//
+// Many public resolvers, e.g. dns11.quad9.net, omit the option from the
+// response.  The old code interpreted the missing option as a zero SCOPE
+// PREFIX-LENGTH, cached the answer under a null subnet, and then served the
+// first resolved subnet's answer to every other subnet.
+func TestECSProxyNoEchoUpstream(t *testing.T) {
+	const host = "host"
+
+	var (
+		ans []dns.RR
+
+		// upstreamCalls counts the exchanges, to tell a cache hit from a real
+		// upstream query.
+		upstreamCalls int
+	)
+
+	// This upstream deliberately never sets ECS in the response.
+	onExchange := func(m *dns.Msg) (resp *dns.Msg, err error) {
+		upstreamCalls++
+
+		resp = (&dns.Msg{}).SetReply(m)
+		if ans != nil {
+			resp.Answer = append(resp.Answer, ans...)
+		}
+
+		return resp, nil
+	}
+	u := newTestECSUpstream(onExchange)
+
+	ans = []dns.RR{&dns.A{
+		Hdr: dns.RR_Header{Rrtype: dns.TypeA, Name: host + ".", Ttl: 300},
+		A:   net.IP{4, 3, 2, 1},
+	}}
+
+	prx := mustNew(t, &Config{
+		Logger:                 testLogger,
+		UDPListenAddr:          []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
+		TCPListenAddr:          []*net.TCPAddr{net.TCPAddrFromAddrPort(localhostAnyPort)},
+		UpstreamConfig:         &UpstreamConfig{Upstreams: []upstream.Upstream{u}},
+		TrustedProxies:         defaultTrustedProxies,
+		DNSSECEnabled:          true,
+		EnableEDNSClientSubnet: true,
+		CacheEnabled:           true,
+	})
+
+	servicetest.RequireRun(t, prx, testTimeout)
+
+	// resolveFor resolves for the given client address, which is what
+	// processECS turns into the client subnet.
+	resolveFor := func(t *testing.T, clientAddr string) (ip net.IP) {
+		t.Helper()
+
+		req := newHostTestMessage(host)
+		req.SetEdns0(defaultUDPBufSize, false)
+
+		d := &DNSContext{
+			Req:  req,
+			Addr: netip.MustParseAddrPort(clientAddr),
+		}
+
+		ctx := testutil.ContextWithTimeout(t, defaultTimeout)
+		require.NoError(t, prx.Resolve(ctx, d))
+
+		require.NotEmpty(t, d.Res.Answer)
+
+		return firstIP(d.Res)
+	}
+
+	t.Run("different_subnets_get_different_answers", func(t *testing.T) {
+		ans = []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Rrtype: dns.TypeA, Name: host + ".", Ttl: 300},
+			A:   net.IP{4, 3, 2, 1},
+		}}
+		upstreamCalls = 0
+		assert.Equal(t, net.IP{4, 3, 2, 1}, resolveFor(t, "1.2.3.0:1234"))
+		assert.Equal(t, 1, upstreamCalls)
+
+		// The same subnet must be served from the cache.
+		upstreamCalls = 0
+		assert.Equal(t, net.IP{4, 3, 2, 1}, resolveFor(t, "1.2.3.1:1234"))
+		assert.Equal(t, 0, upstreamCalls)
+
+		// A different subnet must not be served the previous answer, even
+		// though the upstream would reply with something else.
+		ans = []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Rrtype: dns.TypeA, Name: host + ".", Ttl: 300},
+			A:   net.IP{4, 3, 2, 2},
+		}}
+		upstreamCalls = 0
+		assert.Equal(t, net.IP{4, 3, 2, 2}, resolveFor(t, "2.2.3.0:1234"))
+		assert.Equal(t, 1, upstreamCalls)
+
+		// And a third one, again with its own answer.
+		ans = []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Rrtype: dns.TypeA, Name: host + ".", Ttl: 300},
+			A:   net.IP{4, 3, 2, 3},
+		}}
+		upstreamCalls = 0
+		assert.Equal(t, net.IP{4, 3, 2, 3}, resolveFor(t, "3.3.3.0:1234"))
+		assert.Equal(t, 1, upstreamCalls)
+
+		// Going back to the first subnet still yields its own cached answer.
+		ans = nil
+		upstreamCalls = 0
+		assert.Equal(t, net.IP{4, 3, 2, 1}, resolveFor(t, "1.2.3.0:1234"))
+		assert.Equal(t, 0, upstreamCalls)
+	})
+
+	t.Run("cache_hit_carries_ecs", func(t *testing.T) {
+		// The response served from the subnet cache must tell the client which
+		// subnet it was cached for.
+		req := newHostTestMessage(host)
+		req.SetEdns0(defaultUDPBufSize, false)
+
+		d := &DNSContext{
+			Req:  req,
+			Addr: netip.MustParseAddrPort("1.2.3.0:1234"),
+		}
+
+		ctx := testutil.ContextWithTimeout(t, defaultTimeout)
+		require.NoError(t, prx.Resolve(ctx, d))
+
+		ecs, scope := ecsFromMsg(d.Res)
+		require.NotNil(t, ecs, "cached response must contain the ECS option")
+
+		ones, _ := ecs.Mask.Size()
+		assert.Equal(t, 24, ones)
+		assert.Equal(t, ones, scope)
+		assert.True(t, ecs.IP.Equal(net.IP{1, 2, 3, 0}))
 	})
 }
 

@@ -67,7 +67,10 @@ func (pr *defaultPendingRequests) queue(
 	var key []byte
 	if dctx.ReqECS != nil {
 		ones, _ := dctx.ReqECS.Mask.Size()
-		key = msgToKeyWithSubnet(dctx.Req, dctx.ReqECS.IP, ones)
+		// Mask the address to drop the host bits, so that the key matches the
+		// one used by the cache.  Otherwise, two clients from the same subnet
+		// would have distinct keys and their requests wouldn't be deduplicated.
+		key = msgToKeyWithSubnet(dctx.Req, dctx.ReqECS.IP.Mask(dctx.ReqECS.Mask), ones)
 	} else {
 		key = msgToKey(dctx.Req)
 	}
@@ -102,7 +105,9 @@ func (pr *defaultPendingRequests) done(ctx context.Context, dctx *DNSContext, er
 	var key []byte
 	if dctx.ReqECS != nil {
 		ones, _ := dctx.ReqECS.Mask.Size()
-		key = msgToKeyWithSubnet(dctx.Req, dctx.ReqECS.IP, ones)
+		// Mask the address to drop the host bits, so that the key matches the
+		// one used by the cache and by [defaultPendingRequests.queue].
+		key = msgToKeyWithSubnet(dctx.Req, dctx.ReqECS.IP.Mask(dctx.ReqECS.Mask), ones)
 	} else {
 		key = msgToKey(dctx.Req)
 	}

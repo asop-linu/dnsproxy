@@ -40,8 +40,14 @@ func ecsFromMsg(m *dns.Msg) (subnet *net.IPNet, scope int) {
 }
 
 // setECS sets the EDNS client subnet option based on ip and scope into m.  It
-// returns masked IP and mask length.
+// returns masked IP and mask length.  It returns nil if ip is not a valid IP
+// address.
 func setECS(m *dns.Msg, ip net.IP, scope uint8) (subnet *net.IPNet) {
+	if ip == nil || ip.To4() == nil && ip.To16() == nil {
+		// Nothing valid to build a subnet from.
+		return nil
+	}
+
 	const (
 		// defaultECSv4 is the default length of network mask for IPv4 address
 		// in ECS option.

@@ -94,6 +94,12 @@ type DNSContext struct {
 	// hasEDNS0 reflects if the request has EDNS0 RRs.
 	hasEDNS0 bool
 
+	// clientHadEDNS0 reflects if the client's original request had any EDNS0
+	// RRs, before the proxy added its own EDNS Client Subnet option.  It is
+	// used to avoid adding EDNS options to responses for clients that haven't
+	// requested them.
+	clientHadEDNS0 bool
+
 	// doBit is the DNSSEC OK flag from request's EDNS0 RR if presented.
 	doBit bool
 }
