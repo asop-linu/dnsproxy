@@ -1049,6 +1049,91 @@ func TestExchangeCustomUpstreamConfigCache(t *testing.T) {
 	assert.Equal(t, ansIP, firstIP(d.Res))
 }
 
+// TestECSSubnetOption_regression is a regression test for a malformed
+// EDNS Client Subnet option causing the whole response to fail packing.
+//
+// A client can send an option with family 2 and an IPv4-mapped address paired
+// with a prefix length wider than 32 bits.  The address is then detected as
+// IPv4, so masking it with the IPv6-wide prefix length produced a nil address,
+// which cannot be packed into an EDNS0 option and made [dns.Msg.Pack] fail, so
+// the proxy sent no response at all on the cache-hit path.
+func TestECSSubnetOption_regression(t *testing.T) {
+	testCases := []struct {
+		name        string
+		addr        net.IP
+		maskLen     int
+		wantOK      bool
+		wantFamily  uint16
+		wantNetmask uint8
+	}{{
+		name:        "ipv4_ordinary",
+		addr:        net.IP{1, 2, 3, 4},
+		maskLen:     netutil.IPv4BitLen,
+		wantOK:      true,
+		wantFamily:  1,
+		wantNetmask: 32,
+	}, {
+		name:        "ipv6_ordinary",
+		addr:        net.ParseIP("2001:db8::1"),
+		maskLen:     netutil.IPv6BitLen,
+		wantOK:      true,
+		wantFamily:  2,
+		wantNetmask: 128,
+	}, {
+		// The malicious case: family 2, an IPv4-mapped address, and a prefix
+		// length that does not fit the IPv4 family.
+		name:    "ipv4_mapped_ipv6_with_ipv6_wide_prefix",
+		addr:    net.ParseIP("::ffff:203.0.113.5"),
+		maskLen: 64,
+		wantOK:  false,
+	}, {
+		name:    "ipv4_mapped_ipv6_with_ipv6_full_prefix",
+		addr:    net.ParseIP("::ffff:203.0.113.5"),
+		maskLen: netutil.IPv6BitLen,
+		wantOK:  false,
+	}, {
+		name:    "ipv4_with_ipv6_wide_prefix",
+		addr:    net.IP{203, 0, 113, 5},
+		maskLen: 33,
+		wantOK:  false,
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			n := &net.IPNet{
+				IP:   tc.addr,
+				Mask: net.CIDRMask(tc.maskLen, netutil.IPv6BitLen),
+			}
+
+			e, ok := ecsSubnetOption(n, tc.maskLen)
+			require.Equal(t, tc.wantOK, ok)
+
+			m := (&dns.Msg{}).SetQuestion("example.com.", dns.TypeA)
+			m.SetEdns0(4096, false)
+
+			if !ok {
+				// A malformed subnet must not be added to the response, and the
+				// response must still be packable.
+				assert.Empty(t, m.IsEdns0().Option)
+
+				_, err := m.Pack()
+				require.NoError(t, err)
+
+				return
+			}
+
+			assert.Equal(t, tc.wantFamily, e.Family)
+			assert.Equal(t, tc.wantNetmask, e.SourceNetmask)
+			require.NotNil(t, e.Address, "a packable option must have an address")
+
+			m.IsEdns0().Option = append(m.IsEdns0().Option, e)
+
+			_, err := m.Pack()
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestECS(t *testing.T) {
 	t.Run("ipv4", func(t *testing.T) {
 		ip := net.IP{1, 2, 3, 4}

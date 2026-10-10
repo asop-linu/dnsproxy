@@ -138,15 +138,29 @@ func setCachedECS(d *DNSContext) {
 
 // ecsSubnetOption returns an EDNS Client Subnet option for the given subnet.
 //
-//	The address part is masked, as required by RFC 7871 Section 6.
+// The address part is masked, as required by RFC 7871 Section 6.  ok is false
+// if the subnet cannot be represented as an option, in which case no option
+// should be added to the response.
 func ecsSubnetOption(n *net.IPNet, ones int) (e *dns.EDNS0_SUBNET, ok bool) {
 	// Use the subnet address, not the address of the client.
+	//
+	// The prefix length is checked against the address family, since
+	// [ecsFromMsg] may return an IPv4 address paired with an IPv6-wide mask
+	// when a client sends an option with family 2 and an IPv4-mapped address.
+	// Masking an IPv4 address with such a prefix length would yield a nil
+	// address, which cannot be packed into an EDNS0 option and would make
+	// packing the entire response fail.  Such an option is malformed, so drop
+	// it instead of echoing back a subnet the client did not actually ask
+	// for.
 	if ip4 := n.IP.To4(); ip4 != nil {
+		if ones < 0 || ones > netutil.IPv4BitLen {
+			return nil, false
+		}
+
 		return &dns.EDNS0_SUBNET{
 			Code:   dns.EDNS0SUBNET,
 			Family: 1,
-			// #nosec G115 -- ones is a subnet prefix length from
-			// [net.IPMask.Size], and so it is within 0 to 32 for IPv4.
+			// #nosec G115 -- ones is validated to be within 0 to 32 above.
 			SourceNetmask: uint8(ones),
 			// #nosec G115 -- same as above.
 			SourceScope: uint8(ones),
@@ -155,11 +169,14 @@ func ecsSubnetOption(n *net.IPNet, ones int) (e *dns.EDNS0_SUBNET, ok bool) {
 	}
 
 	if ip16 := n.IP.To16(); ip16 != nil {
+		if ones < 0 || ones > netutil.IPv6BitLen {
+			return nil, false
+		}
+
 		return &dns.EDNS0_SUBNET{
 			Code:   dns.EDNS0SUBNET,
 			Family: 2,
-			// #nosec G115 -- ones is a subnet prefix length from
-			// [net.IPMask.Size], and so it is within 0 to 128 for IPv6.
+			// #nosec G115 -- ones is validated to be within 0 to 128 above.
 			SourceNetmask: uint8(ones),
 			// #nosec G115 -- same as above.
 			SourceScope: uint8(ones),
