@@ -34,6 +34,11 @@ const (
 	tlsServerName           = "testdns.adguard.com"
 	testMessagesCount       = 10
 
+	// testAnswerIP is the address returned by [staticUpstream].  It matches the
+	// address that google-public-dns-a.google.com resolves to, so that tests can
+	// keep using [requireResponse] unchanged.
+	testAnswerIP = "8.8.8.8"
+
 	// defaultTestTTL used to guarantee caching.
 	defaultTestTTL = 1000
 
@@ -231,6 +236,48 @@ func newTestUpstreamConfig(
 	require.NoError(tb, err)
 
 	return upsConf
+}
+
+// staticUpstream is an [upstream.Upstream] that answers every A request
+// locally with [testAnswerIP].
+//
+// Tests that only exercise the transport layer should use it instead of a real
+// public resolver.  Depending on an external server makes a test non-hermetic:
+// it fails whenever the network is unavailable, slow, or when the remote server
+// rate-limits the repeated queries a test loop sends.  Such failures look like
+// races in the code under test, while they are in fact a network dependency.
+type staticUpstream struct{}
+
+// type check
+var _ upstream.Upstream = (*staticUpstream)(nil)
+
+// Address implements the [upstream.Upstream] interface for [*staticUpstream].
+// An empty address marks the upstream as non-addressable.
+func (u *staticUpstream) Address() (addr string) { return "" }
+
+// Exchange implements the [upstream.Upstream] interface for [*staticUpstream].
+func (u *staticUpstream) Exchange(req *dns.Msg) (resp *dns.Msg, err error) {
+	resp = (&dns.Msg{}).SetReply(req)
+	resp.Answer = []dns.RR{&dns.A{
+		Hdr: dns.RR_Header{
+			Name:   req.Question[0].Name,
+			Rrtype: dns.TypeA,
+			Class:  dns.ClassINET,
+			Ttl:    defaultTestTTL,
+		},
+		A: net.ParseIP(testAnswerIP),
+	}}
+
+	return resp, nil
+}
+
+// Close implements the [upstream.Upstream] interface for [*staticUpstream].
+func (u *staticUpstream) Close() (err error) { return nil }
+
+// newTestStaticUpstreamConfig returns an [UpstreamConfig] backed by
+// [*staticUpstream].
+func newTestStaticUpstreamConfig() (u *UpstreamConfig) {
+	return &UpstreamConfig{Upstreams: []upstream.Upstream{&staticUpstream{}}}
 }
 
 // mustStartDefaultProxy starts a new proxy with default settings and returns

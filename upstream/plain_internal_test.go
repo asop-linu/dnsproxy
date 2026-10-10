@@ -15,6 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testDNSServerBindAttempts is the maximum number of attempts to find a port
+// that is free for both UDP and TCP.
+const testDNSServerBindAttempts = 100
+
 func TestUpstream_plainDNS(t *testing.T) {
 	srv := startDNSServer(t, func(w dns.ResponseWriter, req *dns.Msg) {
 		resp := respondToTestMessage(req)
@@ -160,14 +164,34 @@ func startDNSServer(tb testing.TB, handler dns.HandlerFunc) (s *testDNSServer) {
 
 	s = &testDNSServer{}
 
-	udpListener, err := net.ListenPacket("udp", "127.0.0.1:0")
-	require.NoError(tb, err)
+	// The server must listen on the same port for both UDP and TCP, since the
+	// tests use it to exercise the fallback between them.  Asking the kernel
+	// for a free UDP port does not guarantee that the same number is free for
+	// TCP, so retry until both transports are available on one port.  Without
+	// this, the test fails with "bind: address already in use" whenever the
+	// ephemeral port picked for UDP is already taken for TCP, which happens
+	// intermittently when tests are run repeatedly or in parallel.
+	for range testDNSServerBindAttempts {
+		udpListener, err := net.ListenPacket("udp", "127.0.0.1:0")
+		require.NoError(tb, err)
 
-	s.port = testutil.RequireTypeAssert[*net.UDPAddr](tb, udpListener.LocalAddr()).Port
-	s.udpListener = udpListener
+		port := testutil.RequireTypeAssert[*net.UDPAddr](tb, udpListener.LocalAddr()).Port
 
-	s.tcpListener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.port))
-	require.NoError(tb, err)
+		tcpListener, tcpErr := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if tcpErr != nil {
+			require.NoError(tb, udpListener.Close())
+
+			continue
+		}
+
+		s.port = port
+		s.udpListener = udpListener
+		s.tcpListener = tcpListener
+
+		break
+	}
+
+	require.NotNilf(tb, s.udpListener, "failed to bind a port free for both UDP and TCP")
 
 	s.udpSrv = &dns.Server{
 		PacketConn: s.udpListener,

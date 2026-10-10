@@ -300,6 +300,11 @@ const (
 
 	// cacheTimeout is the timeout of cache check.
 	cacheTimeout = 20 * cacheTick
+
+	// cacheConcurrentTTL is the TTL used by [TestCache_concurrent].  It is long
+	// enough that the entries cannot expire while the test is asserting on
+	// them.
+	cacheConcurrentTTL = 3600
 )
 
 func TestCacheExpiration(t *testing.T) {
@@ -631,7 +636,12 @@ func setAndGetCache(t *testing.T, c *cache, g *sync.WaitGroup, host, ip string) 
 		MsgHdr: dns.MsgHdr{
 			Response: true,
 		},
-		Answer: []dns.RR{newRR(t, host, dns.TypeA, 1, ipAddr)},
+		// Use a long TTL on purpose.  This test checks that concurrent access is
+		// safe, not that entries expire, and a short TTL would race the
+		// assertions below against the janitor whenever a goroutine is
+		// descheduled for longer than the TTL.  Expiration itself is covered by
+		// [TestCacheExpiration].
+		Answer: []dns.RR{newRR(t, host, dns.TypeA, cacheConcurrentTTL, ipAddr)},
 	}).SetQuestion(host, dns.TypeA)
 
 	c.set(req, dnsMsg, upstreamWithAddr, testLogger)
@@ -645,12 +655,6 @@ func setAndGetCache(t *testing.T, c *cache, g *sync.WaitGroup, host, ip string) 
 
 		requireEqualMsgs(t, ci.m, dnsMsg)
 	}
-
-	assert.Eventuallyf(t, func() bool {
-		ci, _, _ := c.get(req)
-
-		return ci == nil
-	}, cacheTimeout, cacheTick, "cache for %s should already be removed", host)
 }
 
 func TestCache_getWithSubnet(t *testing.T) {

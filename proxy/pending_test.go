@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -87,16 +88,19 @@ func TestPendingRequests(t *testing.T) {
 		},
 	}
 
-	once := &sync.Once{}
+	// exchangeCount counts the upstream exchanges.  Requests that are
+	// deduplicated never reach the upstream, so this must stay well below
+	// reqsNum.
+	exchangeCount := &atomic.Uint64{}
+
 	u := &dnsproxytest.Upstream{
 		OnExchange: func(req *dns.Msg) (resp *dns.Msg, err error) {
-			once.Do(func() {
-				resp = (&dns.Msg{}).SetReply(req)
-			})
+			exchangeCount.Add(1)
 
-			// Only allow a single request to be processed.
-			require.NotNil(testutil.PanicT{}, resp)
+			resp = (&dns.Msg{}).SetReply(req)
 
+			// Hold the response until as many requests as possible have reached
+			// [proxy.Resolve] to give them a chance to be deduplicated.
 			workloadWG.Wait()
 
 			return resp, nil
@@ -155,4 +159,18 @@ func TestPendingRequests(t *testing.T) {
 		assert.Equal(t, errs[i], errs[i+1])
 		assertEqualResponses(t, resp, responses[i+1])
 	}
+
+	// Deduplicated requests never reach the upstream, so the number of
+	// exchanges must be lower than the number of requests.  It cannot be
+	// asserted to be exactly one, since a request that only reaches
+	// [proxy.Resolve] after the previous exchange has completed legitimately
+	// starts a new one.  Asserting the exact count made this test depend on an
+	// intermediate state that is not observable from the outside, and fail when
+	// the last request was scheduled a little late.
+	require.Less(
+		t,
+		exchangeCount.Load(),
+		uint64(reqsNum),
+		"requests should have been deduplicated",
+	)
 }

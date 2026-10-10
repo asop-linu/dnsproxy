@@ -34,7 +34,7 @@ func TestProxy_quic(t *testing.T) {
 		Logger:         testLogger,
 		QUICListenAddr: []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
 		TLSConfig:      serverConfig,
-		UpstreamConfig: newTestUpstreamConfig(t, defaultTimeout, testDefaultUpstreamAddr),
+		UpstreamConfig: newTestStaticUpstreamConfig(),
 		TrustedProxies: defaultTrustedProxies,
 	}
 
@@ -62,7 +62,7 @@ func TestProxy_quic(t *testing.T) {
 	require.False(t, t.Failed())
 
 	conf.QUICListenAddr = []*net.UDPAddr{addr}
-	conf.UpstreamConfig = newTestUpstreamConfig(t, defaultTimeout, testDefaultUpstreamAddr)
+	conf.UpstreamConfig = newTestStaticUpstreamConfig()
 
 	t.Run("rerun", func(t *testing.T) {
 		dnsProxy := mustNew(t, conf)
@@ -94,7 +94,7 @@ func TestProxy_quicLargePackets(t *testing.T) {
 	serverConfig, caPem := newTLSConfig(t)
 	dnsProxy := mustNew(t, &Config{
 		Logger:         testLogger,
-		UpstreamConfig: newTestUpstreamConfig(t, defaultTimeout, testDefaultUpstreamAddr),
+		UpstreamConfig: newTestStaticUpstreamConfig(),
 		TrustedProxies: defaultTrustedProxies,
 		RequestHandler: reqHandler,
 		TLSConfig:      serverConfig,
@@ -144,7 +144,7 @@ func TestProxy_quicTruncatedRequest(t *testing.T) {
 		Logger:         testLogger,
 		QUICListenAddr: []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
 		TLSConfig:      serverConfig,
-		UpstreamConfig: newTestUpstreamConfig(t, defaultTimeout, testDefaultUpstreamAddr),
+		UpstreamConfig: newTestStaticUpstreamConfig(),
 		TrustedProxies: defaultTrustedProxies,
 		RequestHandler: &testHandler{
 			OnHandle: func(ctx context.Context, p *Proxy, d *DNSContext) (_ error) {
@@ -261,13 +261,13 @@ func sendQUICMessage(
 	// a STREAM FIN packet.
 	_ = stream.Close()
 
-	// Now read the response from the stream.
-	respBytes := make([]byte, 64*1024)
-	n, err := stream.Read(respBytes)
-	if err != nil {
-		require.ErrorIs(t, err, io.EOF)
-	}
-	require.Greater(t, n, minDNSPacketSize)
+	// Now read the response from the stream.  A QUIC stream is a byte stream
+	// and not a message stream, so a single Read may return only a part of the
+	// response, or even no bytes at all when the FIN arrives together with the
+	// data.  Read until EOF to get the whole response.
+	respBytes, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	require.Greater(t, len(respBytes), minDNSPacketSize)
 
 	// Unpack the DNS response.
 	resp = new(dns.Msg)
