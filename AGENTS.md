@@ -50,7 +50,7 @@
 
 ## Env / tooling
 
-- `GOTOOLCHAIN=go1.27.1` (`Makefile:28`)
+- `GOTOOLCHAIN=go1.27.2` (`Makefile:28`)
 - `GOAMD64=v1` (`Makefile:24`)
 - `GOPROXY=https://proxy.golang.org|direct` (`Makefile:25`)
 - `GOTELEMETRY=off` (`Makefile:26`)

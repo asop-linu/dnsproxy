@@ -24,7 +24,6 @@ import (
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"golang.org/x/net/http2"
 )
 
 // Values to configure HTTP and HTTP/2 transport.
@@ -77,9 +76,6 @@ type dnsOverHTTPS struct {
 
 	// quicConfMu protects quicConf.
 	quicConfMu *sync.Mutex
-
-	// transportH2 is an HTTP/2 transport if any.
-	transportH2 *http2.Transport
 
 	// addrRedacted is the redacted string representation of addr.  It is saved
 	// separately to reduce allocations during logging and error reporting.
@@ -208,8 +204,8 @@ func (p *dnsOverHTTPS) Close() (err error) {
 func (p *dnsOverHTTPS) closeClient(client *http.Client) (err error) {
 	if isHTTP3(client) {
 		return client.Transport.(io.Closer).Close()
-	} else if p.transportH2 != nil {
-		p.transportH2.CloseIdleConnections()
+	} else if transport, ok := client.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
 	}
 
 	return nil
@@ -485,24 +481,34 @@ func (p *dnsOverHTTPS) createTransport() (t http.RoundTripper, err error) {
 		IdleConnTimeout:    transportDefaultIdleConnTimeout,
 		MaxConnsPerHost:    dohMaxConnsPerHost,
 		MaxIdleConns:       dohMaxIdleConns,
-		// Since we have a custom DialContext, we need to use this field to make
-		// golang http.Client attempt to use HTTP/2. Otherwise, it would only be
-		// used when negotiated on the TLS level.
+		// Since we have a custom DialContext, we need to make sure HTTP/2 is
+		// used.  Otherwise, it would only be used when negotiated on the TLS
+		// level.
 		ForceAttemptHTTP2: true,
+		// Explicitly configure transport to use HTTP/2.
+		//
+		// See https://github.com/asop-linu/dnsproxy/issues/11.
+		Protocols: dohProtocols(),
+		// Enable HTTP/2 pings on idle connections.
+		HTTP2: &http.HTTP2Config{
+			SendPingTimeout: transportDefaultReadIdleTimeout,
+		},
 	}
-
-	// Explicitly configure transport to use HTTP/2.
-	//
-	// See https://github.com/asop-linu/dnsproxy/issues/11.
-	p.transportH2, err = http2.ConfigureTransports(transport)
-	if err != nil {
-		return nil, err
-	}
-
-	// Enable HTTP/2 pings on idle connections.
-	p.transportH2.ReadIdleTimeout = transportDefaultReadIdleTimeout
 
 	return transport, nil
+}
+
+// dohProtocols returns the set of HTTP protocols supported by the DNS-over-
+// HTTPS transport.  Both HTTP/1 and HTTP/2 are enabled, since the actual
+// protocol is negotiated via ALPN, and [tls.Config.NextProtos] only advertises
+// the versions enabled for the upstream.  HTTP/2 additionally has to be
+// requested explicitly, since the transport uses a custom dialer.
+func dohProtocols() (protocols *http.Protocols) {
+	protocols = new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+
+	return protocols
 }
 
 // http3Transport is a wrapper over [*http3.Transport] that tries to optimize
