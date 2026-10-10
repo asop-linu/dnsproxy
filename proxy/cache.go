@@ -104,9 +104,12 @@ func (ci *cacheItem) pack() (packed []byte) {
 	packed = make([]byte, minPackedLen, minPackedLen+pmLen+len(ci.u))
 
 	// Put expiration time.
+	// #nosec G115 -- the Unix time in seconds fits uint32 until the year 2106.
 	binary.BigEndian.PutUint32(packed, uint32(time.Now().Unix())+ci.ttl)
 
 	// Put the length of the packed message.
+	// #nosec G115 -- DNS messages are limited to 65535 octets by the two-byte
+	// length prefix of the DNS-over-TCP wire format, see RFC 1035 Section 4.2.2.
 	binary.BigEndian.PutUint16(packed[expTimeSz:], uint16(pmLen))
 
 	// Put the packed message itself.
@@ -139,6 +142,8 @@ func (c *cache) unpackItem(data []byte, req *dns.Msg) (ci *cacheItem, expired bo
 
 		ttl = uint32(c.optimisticTTL.Seconds())
 	} else {
+		// #nosec G115 -- the remaining TTL in seconds is non-negative here, since the
+		// item hasn't expired yet, and it is bounded by the configured cache TTL.
 		ttl = uint32(expire.Unix() - now.Unix())
 	}
 
@@ -324,6 +329,8 @@ func (c *cache) getWithSubnet(req *dns.Msg, n *net.IPNet) (ci *cacheItem, expire
 	// longest-prefix-match, searching up to m+1 times for the largest subnet
 	// that has been cached.
 	for ; m >= 0 && data == nil; m-- {
+		// #nosec G115 -- the subnet prefix length comes from [net.IPMask.Size], which
+		// returns 0 for non-canonical masks, so m is within 0 to 128.
 		k[keyMaskIndex] = byte(m)
 		if m == 0 {
 			// The whole address falls outside of the searched prefix, so drop
@@ -670,6 +677,8 @@ func msgToKeyWithSubnet(m *dns.Msg, ecsIP net.IP, mask int) (key []byte) {
 	binary.BigEndian.PutUint16(key[1+packedMsgLenSz:], q.Qclass)
 
 	// Add mask.
+	// #nosec G115 -- mask is a subnet prefix length from [net.IPMask.Size] and is
+	// therefore within 0 to 128.
 	key[keyMaskIndex] = uint8(mask)
 	k := keyIPIndex
 	if masked {

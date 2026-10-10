@@ -240,6 +240,8 @@ func (p *Proxy) respondTCP(d *DNSContext) error {
 // a 2-byte prefix followed by the message itself.
 func writePrefixed(b []byte, conn net.Conn) (err error) {
 	l := make([]byte, 2)
+	// #nosec G115 -- DNS messages are limited to 65535 octets by this very length
+	// prefix, see RFC 1035 Section 4.2.2.
 	binary.BigEndian.PutUint16(l, uint16(len(b)))
 	_, err = (&net.Buffers{l, b}).WriteTo(conn)
 

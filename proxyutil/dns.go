@@ -12,6 +12,8 @@ import (
 // AddPrefix adds a 2-byte prefix with the DNS message length.
 func AddPrefix(b []byte) (m []byte) {
 	m = make([]byte, 2+len(b))
+	// #nosec G115 -- DNS messages are limited to 65535 octets by this very length
+	// prefix, see RFC 1035 Section 4.2.2.
 	binary.BigEndian.PutUint16(m, uint16(len(b)))
 	copy(m[2:], b)
 

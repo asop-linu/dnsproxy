@@ -346,6 +346,8 @@ func (p *Proxy) handleQUICStream(ctx context.Context, stream *quic.Stream, conn 
 	// Note that we support both the old drafts and the new RFC. In the old
 	// draft DNS messages were not prefixed with the message length.
 	packetLen := binary.BigEndian.Uint16(buf[:2])
+	// #nosec G115 -- buf is two bytes longer than [dns.MaxMsgSize], which is 65535,
+	// so n-2 is always within the target type.
 	if packetLen == uint16(n-2) {
 		err = req.Unpack(buf[2:n])
 	} else {

@@ -90,6 +90,7 @@ func (p *dnsCrypt) exchangeDNSCrypt(ctx context.Context, req *dns.Msg) (resp *dn
 	case
 		client == nil,
 		resolverInfo == nil,
+		// #nosec G115 -- the Unix time in seconds fits uint32 until the year 2106.
 		resolverInfo.ResolverCert.NotAfter < uint32(time.Now().Unix()):
 		client, resolverInfo, err = p.resetClient(ctx)
 		if err != nil {

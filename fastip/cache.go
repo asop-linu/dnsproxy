@@ -28,15 +28,19 @@ type cacheEntry struct {
 //   - status   byte     (0 for ok, 1 for timed out),
 //   - latency  [2]byte  (milliseconds).
 func packCacheEntry(ent *cacheEntry, ttl uint32) (d []byte) {
+	// #nosec G115 -- the Unix time in seconds fits uint32 until the year 2106.
 	expire := uint32(time.Now().Unix()) + ttl
 
 	d = make([]byte, 4+1+2)
 	binary.BigEndian.PutUint32(d, expire)
 	i := 4
 
+	// #nosec G115 -- status is only ever 0 or 1, see [cacheEntry].
 	d[i] = byte(ent.status)
 	i++
 
+	// #nosec G115 -- the latency in milliseconds is below the cache TTL of ten
+	// minutes, and so it never exceeds 65535.
 	binary.BigEndian.PutUint16(d[i:], uint16(ent.latencyMsec))
 	// i += 2
 

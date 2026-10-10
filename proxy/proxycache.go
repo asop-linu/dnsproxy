@@ -143,21 +143,27 @@ func ecsSubnetOption(n *net.IPNet, ones int) (e *dns.EDNS0_SUBNET, ok bool) {
 	// Use the subnet address, not the address of the client.
 	if ip4 := n.IP.To4(); ip4 != nil {
 		return &dns.EDNS0_SUBNET{
-			Code:          dns.EDNS0SUBNET,
-			Family:        1,
+			Code:   dns.EDNS0SUBNET,
+			Family: 1,
+			// #nosec G115 -- ones is a subnet prefix length from
+			// [net.IPMask.Size], and so it is within 0 to 32 for IPv4.
 			SourceNetmask: uint8(ones),
-			SourceScope:   uint8(ones),
-			Address:       ip4.Mask(net.CIDRMask(ones, netutil.IPv4BitLen)),
+			// #nosec G115 -- same as above.
+			SourceScope: uint8(ones),
+			Address:     ip4.Mask(net.CIDRMask(ones, netutil.IPv4BitLen)),
 		}, true
 	}
 
 	if ip16 := n.IP.To16(); ip16 != nil {
 		return &dns.EDNS0_SUBNET{
-			Code:          dns.EDNS0SUBNET,
-			Family:        2,
+			Code:   dns.EDNS0SUBNET,
+			Family: 2,
+			// #nosec G115 -- ones is a subnet prefix length from
+			// [net.IPMask.Size], and so it is within 0 to 128 for IPv6.
 			SourceNetmask: uint8(ones),
-			SourceScope:   uint8(ones),
-			Address:       ip16.Mask(net.CIDRMask(ones, netutil.IPv6BitLen)),
+			// #nosec G115 -- same as above.
+			SourceScope: uint8(ones),
+			Address:     ip16.Mask(net.CIDRMask(ones, netutil.IPv6BitLen)),
 		}, true
 	}
 

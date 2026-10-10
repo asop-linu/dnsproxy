@@ -38,6 +38,8 @@ func (f *FastestAddr) schedulePings(
 		if cached == nil {
 			scheduled = true
 			for _, port := range f.pingPorts {
+				// #nosec G115 -- pingPorts only ever holds the hard-coded ports 80
+				// and 443, see [newFastestAddr].
 				go f.pingDoTCP(host, netip.AddrPortFrom(ip, uint16(port)), resCh)
 			}
 
@@ -144,6 +146,7 @@ func (f *FastestAddr) pingDoTCP(host string, addrPort netip.AddrPort, resCh chan
 		}
 	}
 
+	// #nosec G115 -- [time.Duration.Milliseconds] is never negative.
 	latency := uint(elapsed.Milliseconds())
 
 	resCh <- &pingResult{

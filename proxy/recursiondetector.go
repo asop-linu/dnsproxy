@@ -45,6 +45,8 @@ func (rd *recursionDetector) check(msg *dns.Msg) (ok bool) {
 		return false
 	}
 
+	// #nosec G115 -- the value is a UnixNano timestamp previously stored by
+	// [recursionDetector.add], which is an int64 and so fits the target type.
 	expire := time.Unix(0, int64(binary.BigEndian.Uint64(expireData)))
 
 	return time.Now().Before(expire)
