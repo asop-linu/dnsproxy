@@ -24,18 +24,24 @@ func TestFastestAddr_PingAll_timeout(t *testing.T) {
 	t.Run("isolated", func(t *testing.T) {
 		f := New(&Config{Logger: slogutil.NewDiscardLogger()})
 
-		waitCh := make(chan unit)
-		f.pinger.Control = func(_, _ string, _ syscall.RawConn) error {
-			<-waitCh
+		// The hook must report failure, otherwise pingAll would find a
+		// successful result instead of timing out.  Pre-fill the channel, as a
+		// hook waiting for a send made after pingAll returns would only ever be
+		// released by the timeout and would leak a goroutine.
+		failCh := make(chan unit, len(f.pingPorts)*2)
+		for range cap(failCh) {
+			failCh <- unit{}
+		}
 
-			return nil
+		f.pinger.Control = func(_, _ string, _ syscall.RawConn) error {
+			<-failCh
+
+			return errors.Error("test: isolated")
 		}
 
 		ip := netutil.IPv4Localhost()
 		res := f.pingAll("", []netip.Addr{ip, ip})
 		require.Nil(t, res)
-
-		waitCh <- unit{}
 	})
 
 	t.Run("cached", func(t *testing.T) {
@@ -120,11 +126,19 @@ func TestFastestAddr_PingAll_cache(t *testing.T) {
 		require.NoError(t, err)
 		testutil.CleanupAndRequireSuccess(t, listener.Close)
 
-		ip = netutil.IPv4Localhost()
+		// Use distinct addresses.  schedulePings consults the cache per element
+		// of ips, so repeating one address lets the first ping populate the
+		// cache, after which the second element resolves from it and schedules
+		// nothing.  The WaitGroup below would then wait for a dial that never
+		// happens, which hung the whole package at roughly one run in twenty.
+		ip1 := netutil.IPv4Localhost()
+		ip2 := netip.MustParseAddr("127.0.0.2")
+
 		f := New(&Config{Logger: slogutil.NewDiscardLogger()})
 
 		f.pingPorts = []uint{uint(listener.Addr().(*net.TCPAddr).Port)}
-		ips := []netip.Addr{ip, ip}
+		ips := []netip.Addr{ip1, ip2}
+		hosts := []string{ip1.String(), ip2.String()}
 
 		wg := &sync.WaitGroup{}
 		wg.Add(len(ips) * len(f.pingPorts))
@@ -133,7 +147,7 @@ func TestFastestAddr_PingAll_cache(t *testing.T) {
 			hostport, err := netutil.ParseHostPort(address)
 			require.NoError(t, err)
 
-			assert.Equal(t, ip.String(), hostport.Host)
+			assert.Contains(t, hosts, hostport.Host)
 			assert.Contains(t, f.pingPorts, uint(hostport.Port))
 
 			wg.Done()
@@ -145,9 +159,12 @@ func TestFastestAddr_PingAll_cache(t *testing.T) {
 		require.NotNil(t, res)
 
 		assert.True(t, res.success)
-		assertCaching(t, f, ip, 0)
 
+		// Wait for every dial before inspecting the cache, otherwise the entry
+		// for the winning address may not be stored yet.
 		wg.Wait()
+
+		assertCaching(t, f, res.addrPort.Addr(), 0)
 	})
 }
 
