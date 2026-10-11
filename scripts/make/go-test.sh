@@ -3,7 +3,7 @@
 # This comment is used to simplify checking local copies of the script.  Bump
 # this number every time a significant change is made to this script.
 #
-# AdGuard-Project-Version: 10
+# AdGuard-Project-Version: 11
 
 # TODO(a.garipov): Use set -o 'pipefail' when the image supports it
 set -e -f -u
@@ -41,7 +41,15 @@ count_flags='--count=2'
 cover_flags='--coverprofile=./cover.out'
 go="${GO:-go}"
 shuffle_flags='--shuffle=on'
-timeout_flags="${TIMEOUT_FLAGS:---timeout=2m}"
+if [ "${TEST_INTEGRATION:-0}" -eq '1' ]; then
+	# Integration tests exchange real traffic with public DNS servers over UDP,
+	# TCP, TLS, HTTPS, and DNSCrypt, so they need more headroom than the
+	# hermetic default suite.
+	timeout_flags="${TIMEOUT_FLAGS:---timeout=10m}"
+else
+	timeout_flags="${TIMEOUT_FLAGS:---timeout=2m}"
+fi
+
 readonly count_flags cover_flags go shuffle_flags timeout_flags
 
 # run_test runs Go tests and optionally generates JUnit reports.
@@ -58,8 +66,10 @@ run_test() {
 		"$x_flags" \
 		;
 
+	# Tests that reach the public network are guarded by the integration build
+	# tag; see requireIntegration in the proxy and upstream packages.
 	if [ "${TEST_INTEGRATION:-0}" -eq '1' ]; then
-		set -- "$@" '--coverpkg=./...'
+		set -- "$@" '--tags=integration' '--coverpkg=./...'
 	fi
 
 	set -- "$@" work

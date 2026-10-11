@@ -17,9 +17,26 @@
 ## Test notes
 
 - Tests use `--count=2 --shuffle=on --coverprofile=./cover.out` (`scripts/make/go-test.sh:40-45`)
-- Integration tests: set `TEST_INTEGRATION=1` (adds `--coverpkg=./...`)
 - Race tests: `RACE=1` flag (e.g. `RACE=1 make test`)
-- Test timeout default: `---timeout=2m` (`go-test.sh:44`)
+- Test timeout default: `--timeout=2m`, or `--timeout=10m` with `TEST_INTEGRATION=1`
+- The default suite is hermetic: it must pass with no network at all
+  (`unshare -rn sh -c 'ip link set lo up; go test ./...'`)
+
+### Integration tests
+
+Tests that exchange real traffic with public DNS servers are guarded by the
+`integration` build tag and skipped by default. Guard them with
+`requireIntegration(t)` (defined per test package in `proxy/integration_test.go`
+and `upstream/integration_test.go`, with the `integrationEnabled` constant
+supplied by the `_on`/`_off` variants). Run them with:
+
+```sh
+TEST_INTEGRATION=1 make test   # adds --tags=integration
+```
+
+Prefer making a test hermetic over tagging it: reuse a local fake such as
+`proxy.staticUpstream` instead of a public address. Only tag tests whose subject
+is the remote protocol itself, e.g. DoT bootstrap or DNSCrypt.
 
 ## Lint pipeline order matters
 
