@@ -289,7 +289,7 @@ func mustStartDefaultProxy(tb testing.TB) (p *Proxy) {
 		Logger:         testLogger,
 		UDPListenAddr:  []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
 		TCPListenAddr:  []*net.TCPAddr{net.TCPAddrFromAddrPort(localhostAnyPort)},
-		UpstreamConfig: newTestUpstreamConfig(tb, defaultTimeout, testDefaultUpstreamAddr),
+		UpstreamConfig: newTestStaticUpstreamConfig(),
 		TrustedProxies: defaultTrustedProxies,
 	})
 
@@ -301,13 +301,13 @@ func mustStartDefaultProxy(tb testing.TB) (p *Proxy) {
 // TestProxyRace sends multiple parallel DNS requests to the
 // fully configured dnsproxy to check for race conditions
 func TestProxyRace(t *testing.T) {
-	upsConf := newTestUpstreamConfig(
-		t,
-		defaultTimeout,
-		// Use the same upstream twice so that we could rotate them
-		testDefaultUpstreamAddr,
-		testDefaultUpstreamAddr,
-	)
+	// Use the same upstream twice so that we could rotate them.  The answers
+	// come from a local static upstream, so the test does not depend on a
+	// public resolver being reachable.
+	upsConf := &UpstreamConfig{Upstreams: []upstream.Upstream{
+		&staticUpstream{},
+		&staticUpstream{},
+	}}
 	dnsProxy := mustNew(t, &Config{
 		Logger:         testLogger,
 		UDPListenAddr:  []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
@@ -594,6 +594,7 @@ func TestProxy_Resolve_dnssecCache(t *testing.T) {
 }
 
 func TestExchangeWithReservedDomains(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	dnsProxy := mustNew(t, &Config{
@@ -659,6 +660,7 @@ func TestExchangeWithReservedDomains(t *testing.T) {
 // TestOneByOneUpstreamsExchange tries to resolve DNS request
 // with one valid and two invalid upstreams
 func TestOneByOneUpstreamsExchange(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	dnsProxy := mustNew(t, &Config{
@@ -828,6 +830,7 @@ func TestFallback(t *testing.T) {
 }
 
 func TestFallbackFromInvalidBootstrap(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	invalidRslv, err := upstream.NewUpstreamResolver("8.8.8.8:555", &upstream.Options{

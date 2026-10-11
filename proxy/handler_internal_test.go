@@ -42,7 +42,7 @@ func TestFilteringHandler(t *testing.T) {
 	dnsProxy := mustNew(t, &Config{
 		Logger:         testLogger,
 		TrustedProxies: defaultTrustedProxies,
-		UpstreamConfig: newTestUpstreamConfig(t, defaultTimeout, testDefaultUpstreamAddr),
+		UpstreamConfig: newTestStaticUpstreamConfig(),
 		RequestHandler: reqHandler,
 		UDPListenAddr:  []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
 		TCPListenAddr:  []*net.TCPAddr{net.TCPAddrFromAddrPort(localhostAnyPort)},

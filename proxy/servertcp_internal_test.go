@@ -29,7 +29,7 @@ func TestProxy_tls(t *testing.T) {
 		TLSListenAddr:  []*net.TCPAddr{net.TCPAddrFromAddrPort(localhostAnyPort)},
 		QUICListenAddr: []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
 		TLSConfig:      serverConfig,
-		UpstreamConfig: newTestUpstreamConfig(t, defaultTimeout, testDefaultUpstreamAddr),
+		UpstreamConfig: newTestStaticUpstreamConfig(),
 		TrustedProxies: defaultTrustedProxies,
 	})
 

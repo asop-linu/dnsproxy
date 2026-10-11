@@ -98,6 +98,7 @@ func startTestDNSCryptServer(
 }
 
 func TestUpstreamDNSCrypt(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	// AdGuard DNS (DNSCrypt)

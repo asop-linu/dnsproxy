@@ -24,6 +24,7 @@ import (
 )
 
 func TestHttpsProxy(t *testing.T) {
+	requireIntegration(t)
 	testCases := []struct {
 		name  string
 		http3 bool
@@ -70,6 +71,7 @@ func TestHttpsProxy(t *testing.T) {
 }
 
 func TestProxy_trustedProxies(t *testing.T) {
+	requireIntegration(t)
 	var (
 		clientAddr = netip.MustParseAddr("1.2.3.4")
 		proxyAddr  = netip.MustParseAddr("127.0.0.1")

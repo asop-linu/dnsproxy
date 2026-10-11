@@ -118,6 +118,7 @@ func TestUpstream_bootstrapTimeout(t *testing.T) {
 }
 
 func TestUpstreams(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	const upsTimeout = 10 * time.Second
@@ -370,6 +371,7 @@ func TestAddressToUpstream_bads(t *testing.T) {
 }
 
 func TestUpstreamDoTBootstrap(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	upstreams := []struct {
@@ -406,6 +408,7 @@ func TestUpstreamDoTBootstrap(t *testing.T) {
 
 // Test for DoH and DoT upstreams with two bootstraps (only one is valid)
 func TestUpstreamsInvalidBootstrap(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	upstreams := []struct {

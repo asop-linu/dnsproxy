@@ -15,6 +15,7 @@ import (
 )
 
 func TestDNSCryptProxy(t *testing.T) {
+	requireIntegration(t)
 	t.Parallel()
 
 	// Prepare the proxy server.

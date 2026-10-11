@@ -1,3 +1,8 @@
+//go:build integration
+
+// This file contains integration tests, which require a working network and
+// reach out to public DNS servers.  They are excluded from the default build;
+// see scripts/make/go-test.sh.
 package proxy
 
 import (

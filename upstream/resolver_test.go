@@ -44,6 +44,19 @@ func TestNewUpstreamResolver(t *testing.T) {
 	assert.NotEmpty(t, ipAddrs)
 }
 
+// resolverValidityCase is a single case of [TestNewUpstreamResolver_validity].
+type resolverValidityCase struct {
+	name       string
+	addr       string
+	wantErrMsg string
+}
+
+// needsNetwork returns true if the case dials a public server.  Only the valid
+// addresses do; the invalid ones are rejected while parsing the address.
+func (c *resolverValidityCase) needsNetwork() (ok bool) {
+	return c.wantErrMsg == ""
+}
+
 func TestNewUpstreamResolver_validity(t *testing.T) {
 	t.Parallel()
 
@@ -52,11 +65,7 @@ func TestNewUpstreamResolver_validity(t *testing.T) {
 		Timeout: 3 * time.Second,
 	}
 
-	testCases := []struct {
-		name       string
-		addr       string
-		wantErrMsg string
-	}{{
+	testCases := []*resolverValidityCase{{
 		name:       "udp",
 		addr:       "1.1.1.1:53",
 		wantErrMsg: "",
@@ -102,24 +111,40 @@ func TestNewUpstreamResolver_validity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			r, err := upstream.NewUpstreamResolver(tc.addr, withTimeoutOpt)
-			if tc.wantErrMsg != "" {
-				assert.Equal(t, tc.wantErrMsg, err.Error())
-				if nberr := (&upstream.NotBootstrapError{}); errors.As(err, &nberr) {
-					assert.NotNil(t, r)
-				}
-
-				return
-			}
-
-			require.NoError(t, err)
-
-			addrs, err := r.LookupNetIP(context.Background(), "ip", "cloudflare-dns.com")
-			require.NoError(t, err)
-
-			assert.NotEmpty(t, addrs)
+			checkResolverValidity(t, tc, withTimeoutOpt)
 		})
 	}
+}
+
+// checkResolverValidity runs a single case of
+// [TestNewUpstreamResolver_validity].
+func checkResolverValidity(
+	t *testing.T,
+	tc *resolverValidityCase,
+	opts *upstream.Options,
+) {
+	t.Helper()
+
+	if tc.needsNetwork() {
+		requireIntegration(t)
+	}
+
+	r, err := upstream.NewUpstreamResolver(tc.addr, opts)
+	if tc.wantErrMsg != "" {
+		assert.Equal(t, tc.wantErrMsg, err.Error())
+		if nberr := (&upstream.NotBootstrapError{}); errors.As(err, &nberr) {
+			assert.NotNil(t, r)
+		}
+
+		return
+	}
+
+	require.NoError(t, err)
+
+	addrs, err := r.LookupNetIP(context.Background(), "ip", "cloudflare-dns.com")
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, addrs)
 }
 
 func TestCachingResolver_staleness(t *testing.T) {
