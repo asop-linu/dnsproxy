@@ -3,7 +3,7 @@
 # This comment is used to simplify checking local copies of the script.  Bump
 # this number every time a significant change is made to this script.
 #
-# AdGuard-Project-Version: 11
+# AdGuard-Project-Version: 12
 
 # TODO(a.garipov): Use set -o 'pipefail' when the image supports it
 set -e -f -u
@@ -72,7 +72,11 @@ run_test() {
 		set -- "$@" '--tags=integration' '--coverpkg=./...'
 	fi
 
-	set -- "$@" work
+	# Spell the package pattern out.  The bare word "work" happens to expand to
+	# the same package set as "./..." for this module, but only by accident of
+	# how go resolves it, and it silently stops covering everything as soon as
+	# the module layout changes.
+	set -- "$@" './...'
 
 	test_reports_dir="${TEST_REPORTS_DIR:-}"
 	readonly test_reports_dir
