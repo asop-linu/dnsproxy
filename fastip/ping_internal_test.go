@@ -4,9 +4,11 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 
+	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
@@ -45,11 +47,24 @@ func TestFastestAddr_PingAll_timeout(t *testing.T) {
 		ip2 := netip.MustParseAddr("127.0.0.2")
 		f.cacheAddSuccessful(ip1, lat)
 
-		waitCh := make(chan unit)
-		f.pinger.Control = func(_, _ string, _ syscall.RawConn) error {
+		// Only ip2 is missing from the cache, so schedulePings must dial it
+		// once per ping port.  Release every expected call up front: a hook
+		// that waits for a send made after pingAll returns would instead
+		// stall until firstSuccessRes times out and leak a goroutine.
+		waitCh := make(chan unit, len(f.pingPorts))
+		for range f.pingPorts {
+			waitCh <- unit{}
+		}
+
+		var dialed atomic.Int64
+
+		f.pinger.Control = func(_, address string, _ syscall.RawConn) error {
+			dialed.Add(1)
 			<-waitCh
 
-			return nil
+			// Report a failure so that the only successful result is the one
+			// taken from the cache.
+			return errors.Error("test: unreachable")
 		}
 
 		res := f.pingAll("", []netip.Addr{ip1, ip2})
@@ -58,7 +73,8 @@ func TestFastestAddr_PingAll_timeout(t *testing.T) {
 		assert.True(t, res.success)
 		assert.Equal(t, lat, res.latency)
 
-		waitCh <- unit{}
+		// ip1 must have been served from the cache rather than dialed again.
+		assert.Equal(t, int64(len(f.pingPorts)), dialed.Load())
 	})
 }
 
