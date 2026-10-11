@@ -1599,7 +1599,7 @@ func TestProxy_Resolve_withOptimisticResolver(t *testing.T) {
 		EnableLRU: true,
 	})
 	items.Set(key, data)
-	shardIdx := int(hashKey(key) % numShards)
+	shardIdx := p.cache.shardIdx(key)
 	for i := range p.cache.shards {
 		if i == shardIdx {
 			p.cache.shards[i].items = items

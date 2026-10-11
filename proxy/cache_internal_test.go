@@ -49,6 +49,76 @@ func newTestCache(tb testing.TB, conf *cacheConfig) (c *cache) {
 	})
 }
 
+// TestCacheShardSize is a regression test for the configured cache size being
+// silently ignored for small values.
+//
+// The minimum shard size was applied to each of the [numShards] shards
+// separately, so any configured size below numShards*defaultCacheSize was
+// rounded up to exactly that amount, and the documented maximum was not
+// honoured.
+func TestCacheShardSize(t *testing.T) {
+	testCases := []struct {
+		name       string
+		size       int
+		wantShards int
+	}{{
+		name:       "no_size_uses_default",
+		size:       0,
+		wantShards: numShards,
+	}, {
+		name:       "smaller_than_a_single_shard",
+		size:       1024,
+		wantShards: 1,
+	}, {
+		name:       "exactly_one_shard",
+		size:       defaultCacheSize,
+		wantShards: 1,
+	}, {
+		name:       "two_shards",
+		size:       2 * defaultCacheSize,
+		wantShards: 2,
+	}, {
+		name:       "just_below_threshold",
+		size:       numShards*defaultCacheSize - defaultCacheSize,
+		wantShards: numShards - 1,
+	}, {
+		name:       "at_threshold",
+		size:       numShards * defaultCacheSize,
+		wantShards: numShards,
+	}, {
+		name:       "above_threshold",
+		size:       64 * defaultCacheSize,
+		wantShards: numShards,
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.wantShards, shardCount(tc.size))
+
+			c := newCache(&cacheConfig{size: tc.size})
+			assert.Equal(t, tc.wantShards, len(c.shards))
+
+			if tc.size == 0 {
+				return
+			}
+
+			shardSize := tc.size / tc.wantShards
+			if shardSize < defaultCacheSize {
+				shardSize = defaultCacheSize
+			}
+
+			// The effective ceiling must stay within the configured size.  A
+			// size below a single shard falls back to the smallest cache that
+			// can still hold anything.
+			assert.LessOrEqual(
+				t,
+				shardSize*tc.wantShards,
+				max(tc.size, defaultCacheSize),
+			)
+		})
+	}
+}
+
 func TestServeCached(t *testing.T) {
 	dnsProxy := mustNew(t, &Config{
 		Logger:         testLogger,
@@ -161,7 +231,7 @@ func TestCache_expired(t *testing.T) {
 				u:   testUpsAddr,
 				ttl: tc.ttl,
 			}).pack()
-			shardIdx := int(hashKey(key) % numShards)
+			shardIdx := testCache.shardIdx(key)
 			testCache.setGlcCacheItem(shardIdx, key, data)
 			t.Cleanup(testCache.clearItems)
 

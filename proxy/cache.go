@@ -234,27 +234,54 @@ func hashKey(key []byte) uint32 {
 	return hash
 }
 
+// shardCount returns the number of shards to use for a cache of the given
+// size in bytes.
+//
+// The number never exceeds [numShards], which is only reduced for small
+// caches, so that a shard is still able to hold [defaultCacheSize] bytes.
+// Without this, a small configured size would be silently rounded up to
+// numShards*defaultCacheSize, because the minimum is applied to each shard
+// separately.
+func shardCount(size int) (n int) {
+	n = numShards
+	if size > 0 && size < n*defaultCacheSize {
+		n = max(1, size/defaultCacheSize)
+	}
+
+	return n
+}
+
+// shardIdx returns the index of the shard for the given key.  It is the single
+// source of truth for shard selection, so that the tests targeting a specific
+// shard cannot diverge from the lookup path.
+func (c *cache) shardIdx(key []byte) (i int) {
+	return int(hashKey(key) % uint32(len(c.shards)))
+}
+
 // getShard returns the shard for the given key.
 func (c *cache) getShard(key []byte) *cacheShard {
-	return c.shards[hashKey(key)%numShards]
+	return c.shards[c.shardIdx(key)]
 }
 
 // newCache returns a properly initialized cache.  logger must not be nil.
 func newCache(conf *cacheConfig) (c *cache) {
+	shards := shardCount(conf.size)
+
 	// When the cache is small, the shards will be too small to store
 	// anything.  In that case, use the default size.
-	shardSize := conf.size / numShards
+	shardSize := conf.size / shards
 	if shardSize < defaultCacheSize {
 		shardSize = defaultCacheSize
 	}
+
 	c = &cache{
-		shards:           make([]*cacheShard, numShards),
+		shards:           make([]*cacheShard, shards),
 		optimistic:       conf.optimistic,
 		optimisticTTL:    conf.optimisticTTL,
 		optimisticMaxAge: conf.optimisticMaxAge,
 	}
 
-	for i := 0; i < numShards; i++ {
+	for i := 0; i < shards; i++ {
 		shard := &cacheShard{
 			itemsLock:           &sync.RWMutex{},
 			itemsWithSubnetLock: &sync.RWMutex{},
