@@ -1,6 +1,43 @@
 'env':
   'GO_VERSION': '1.27.2'
 'jobs':
+  'IntegrationTestJob':
+    'if': |
+      ${{ github.repository_owner != 'AdGuardSoftwareLimited' }}
+    # These tests talk to public DNS servers over UDP, TCP, TLS, HTTPS, and
+    # DNSCrypt, so they fail for reasons that have nothing to do with this
+    # commit: a regional outage, a rate limit, or a packet that got dropped.
+    # Report them, but never let one of them block a merge.  The hermetic suite
+    # in TestJob remains the gate.
+    'continue-on-error': true
+    'permissions':
+      'contents': 'read'
+    'runs-on': 'ubuntu-latest'
+    'steps':
+      - 'uses': 'actions/checkout@v6'
+        'with':
+          'fetch-depth': 0
+          # Set to false to avoid GITHUB_TOKEN leaking.
+          #
+          # See https://github.com/actions/checkout/issues/485#issuecomment-934422611.
+          'persist-credentials': false
+      - 'uses': 'actions/setup-go@v6'
+        'with':
+          'go-version': '${{ env.GO_VERSION }}'
+      - 'name': 'Integration test step'
+        'run': |
+          #!/bin/sh
+
+          set -e -f -u -x
+
+          # NOTE: Only run those checks that only need Go and Go tools.
+          make \
+              VERBOSE=1 \
+              TEST_INTEGRATION=1 \
+              go-deps \
+              go-test \
+              ;
+        'shell': 'bash'
   'TestJob':
     'if': |
       ${{ github.repository_owner != 'AdGuardSoftwareLimited' }}
@@ -41,7 +78,13 @@
               ;
         'shell': 'bash'
 'name': 'Lint and test workflow'
-'on': 'push'
+'on':
+  'push':
+  'schedule':
+    # NOTE: Nightly, off-peak UTC.  GitHub disables scheduled runs on forks, so
+    # this only takes effect once the repository is not a fork.
+    - 'cron': '17 4 * * *'
+  'workflow_dispatch':
 # Permissions are disabled for all the jobs by default, and then overridden for
 # specific jobs if needed.  This is a recommended practice for security reasons,
 # and also allows to avoid mistakes with permissions when creating new jobs.
