@@ -7,8 +7,8 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
-	proxynetutil "github.com/AdguardTeam/dnsproxy/internal/netutil"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
+	proxynetutil "github.com/asop-linu/dnsproxy/internal/netutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"

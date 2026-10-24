@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/proxy"
+	"github.com/asop-linu/dnsproxy/proxy"
 	"github.com/AdguardTeam/golibs/osutil"
 	"github.com/AdguardTeam/golibs/timeutil"
 	"gopkg.in/yaml.v3"

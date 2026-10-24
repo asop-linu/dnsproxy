@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/dnsproxytest"
+	"github.com/asop-linu/dnsproxy/internal/dnsproxytest"
 	"github.com/stretchr/testify/require"
 )
 

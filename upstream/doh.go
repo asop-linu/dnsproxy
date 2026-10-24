@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/httphdr"
 	"github.com/AdguardTeam/golibs/ioutil"
@@ -38,7 +38,7 @@ const (
 
 	// dohMaxConnsPerHost controls the maximum number of connections for
 	// each host.  Note, that setting it to 1 may cause issues with Go's http
-	// implementation, see https://github.com/AdguardTeam/dnsproxy/issues/278.
+	// implementation, see https://github.com/asop-linu/dnsproxy/issues/278.
 	dohMaxConnsPerHost = 2
 
 	// dohMaxIdleConns controls the maximum number of connections being idle
@@ -297,7 +297,7 @@ func (p *dnsOverHTTPS) exchangeHTTPSClient(
 	}
 
 	// Prevent the client from sending User-Agent header, see
-	// https://github.com/AdguardTeam/dnsproxy/issues/211.
+	// https://github.com/asop-linu/dnsproxy/issues/211.
 	httpReq.Header.Set(httphdr.UserAgent, "")
 	httpReq.Header.Set(httphdr.Accept, "application/dns-message")
 
@@ -504,7 +504,7 @@ func (p *dnsOverHTTPS) createTransport(ctx context.Context) (t http.RoundTripper
 		// [http.Client] attempt to use HTTP/2.  Otherwise, it would only be
 		// used when negotiated on the TLS level.
 		//
-		// See https://github.com/AdguardTeam/dnsproxy/issues/11.
+		// See https://github.com/asop-linu/dnsproxy/issues/11.
 		ForceAttemptHTTP2: true,
 		Protocols:         protocols,
 		HTTP2: &http.HTTP2Config{

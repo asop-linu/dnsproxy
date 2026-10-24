@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/AdguardTeam/dnsproxy/internal/cmd"
+	"github.com/asop-linu/dnsproxy/internal/cmd"
 )
 
 func main() {

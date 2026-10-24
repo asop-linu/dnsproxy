@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/dnsproxytest"
-	"github.com/AdguardTeam/dnsproxy/internal/dnsmsg"
+	"github.com/asop-linu/dnsproxy/dnsproxytest"
+	"github.com/asop-linu/dnsproxy/internal/dnsmsg"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"

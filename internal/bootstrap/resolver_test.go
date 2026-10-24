@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
+	"github.com/asop-linu/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/stretchr/testify/assert"

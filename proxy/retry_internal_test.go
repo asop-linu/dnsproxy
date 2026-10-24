@@ -3,7 +3,7 @@ package proxy
 import (
 	"testing"
 
-	"github.com/AdguardTeam/dnsproxy/internal/dnsproxytest"
+	"github.com/asop-linu/dnsproxy/internal/dnsproxytest"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/stretchr/testify/assert"

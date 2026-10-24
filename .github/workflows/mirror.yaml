@@ -10,7 +10,7 @@
     'with':
       'disable_workflows_source': 'workflow.yaml'
       'disable_workflows_target': 'mirror.yaml private.yaml release.yaml'
-      'target_repo': 'git@github.com:AdguardTeam/dnsproxy.git'
+      'target_repo': 'git@github.com:asop-linu/dnsproxy.git'
       'team': 'go'
 'name': 'Mirror'
 'on':
